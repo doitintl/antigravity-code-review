@@ -27,3 +27,4 @@ htmlcov/
 
 # Env
 .env
+.venv-dev/
