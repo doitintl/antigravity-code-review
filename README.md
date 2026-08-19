@@ -28,7 +28,7 @@ The trade-off is real and is not hidden here: pulling means many model calls, so
 
 **No API keys.** Authentication uses Workload Identity Federation to Vertex AI, so there is no long-lived credential in any repository secret, and inference is billed to the Google Cloud project you point it at.
 
-**Read-only by construction, not by default.** The SDK's default policy denies `run_command` and **allows everything else, including `create_file` and `edit_file`**. A reviewer must therefore deny explicitly rather than inherit safety. This one starts from `deny_all()` and names the handful of tools it needs.
+**Read-only by construction, not by default.** The SDK's default policy denies `run_command` and **allows everything else, including `create_file` and `edit_file`**. A reviewer must therefore deny explicitly rather than inherit safety. This one names the handful of tools it needs twice: once as the only capabilities that exist, and once as the only policies above a `deny_all()` floor.
 
 ## How it will work
 
@@ -43,31 +43,47 @@ The trade-off is real and is not hidden here: pulling means many model calls, so
 Roughly, in the agent process:
 
 ```python
-from google.antigravity import Agent, LocalAgentConfig
+from google.antigravity import Agent, LocalAgentConfig, types
 from google.antigravity.hooks import policy
-from google.antigravity.types import BuiltinTools
 
 config = LocalAgentConfig(
     vertex=True,
-    project=os.environ["GOOGLE_CLOUD_PROJECT"],
-    location=os.environ["GOOGLE_CLOUD_LOCATION"],
+    project=PROJECT,
+    location=LOCATION,
     system_instructions=REVIEWER_INSTRUCTIONS,
     workspaces=[os.getcwd()],            # auto-applies policy.workspace_only()
+
+    # Layer 1: the only tools that exist for this agent
+    capabilities=types.CapabilitiesConfig(
+        enabled_tools=[
+            types.BuiltinTools.VIEW_FILE,
+            types.BuiltinTools.LIST_DIR,
+            types.BuiltinTools.SEARCH_DIR,
+            types.BuiltinTools.FIND_FILE,
+            types.BuiltinTools.FINISH,
+        ],
+        enable_subagents=False,          # on by default; an uncounted spender
+    ),
+    # Layer 2: deny-by-default over whatever survived layer 1
     policies=[
-        policy.deny_all(),                          # nothing unless named below
-        policy.allow(BuiltinTools.VIEW_FILE),
-        policy.allow(BuiltinTools.LIST_DIR),
-        policy.allow(BuiltinTools.SEARCH_DIR),
-        policy.allow(BuiltinTools.FIND_FILE),
-        policy.allow(BuiltinTools.FINISH),
-        policy.allow(github_mcp),                   # posts the review
+        policy.deny_all(),
+        policy.allow(types.BuiltinTools.VIEW_FILE),
+        policy.allow(types.BuiltinTools.LIST_DIR),
+        policy.allow(types.BuiltinTools.SEARCH_DIR),
+        policy.allow(types.BuiltinTools.FIND_FILE),
+        policy.allow(types.BuiltinTools.FINISH),
+        policy.allow(github_mcp, GITHUB_TOOLS),     # posts the review
     ],
     skills_paths=["./.github/review-skills"],
     budget_config=budget_for(max_cost_usd=0.50, model=MODEL),
 )
 ```
 
-`deny_all()` first looks like it should block everything. It does not: policy resolution is **priority-based, not order-based**, and a *specific* allow (priority 3) outranks a *global wildcard* deny (priority 7). The allowlist wins, which is the intended reading and worth knowing before anyone "fixes" it.
+Two things in there are worth knowing before anyone "fixes" them.
+
+`deny_all()` first looks like it should block everything. It does not: policy resolution is **priority-based, not order-based**, and a *specific* allow (priority 3) outranks a *global wildcard* deny (priority 7). The allowlist wins, which is the intended reading.
+
+And the capability layer is not redundant with the policy layer. A denied tool is still *advertised* to the model — its schema is in the prompt on every one of a review's fourteen turns, and the model will spend real calls trying to use it and being refused. `enabled_tools` means it was never there. On a multi-turn reviewer that is a cost decision as much as a security one, which is the sort of overlap this project is looking for.
 
 ## Cost model in one paragraph
 
@@ -88,7 +104,9 @@ Also relevant:
 
 **What is actually new here is narrow: the money.** The SDK already gives you token usage (`Conversation.total_usage`), budget limits (`BudgetConfig`), tracing, skills and policies. Neither published reviewer converts any of it into currency. `run-agy-sdk` declares a `stats` output for "token expenditures" and ships `f.write("stats={}\n")  # placeholder`; the codelab does not raise the subject. Both authenticate with an API key secret rather than Workload Identity Federation.
 
-So this contributes four things: **pricing** (a rate table that gets cached input and reasoning tokens right), a **dollar-denominated ceiling** on top of the SDK's token limits, **WIF** so spend attributes to a project by construction, and **reconciliation** against the billing export. The reviewing, the enforcement and the accounting are all borrowed, with thanks.
+So this contributes three things: **pricing** (a rate table that gets cached input and reasoning tokens right), a **dollar-denominated ceiling** on top of the SDK's token limits, and **WIF** so spend attributes to a project by construction. The reviewing, the enforcement and the accounting are all borrowed, with thanks.
+
+It was four. **Per-PR reconciliation against the billing export is struck**, because the SDK exposes no way to attach a billing label to a generation request — verified against `0.1.12`, not assumed. Spend attributes to a *project*, so reconciliation survives at project level and per-PR figures remain self-reported by Source 1. That is a weaker claim than this README made a day ago, and it is the accurate one.
 
 **If per-PR cost visibility does not matter to you, use one of those instead.** They work today and are simpler.
 

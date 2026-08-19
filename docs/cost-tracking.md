@@ -53,6 +53,25 @@ cost = (
 
 ⚠️ **Thinking tokens move the total unpredictably.** Also from the SDK's own guide: they *"can significantly increase the total count unexpectedly"*. They bill at the output rate and are reported separately, so any estimate that sums only prompt and candidates will be wrong, and wrong in the direction that flatters the tool.
 
+### Accumulate per turn, do not read the total at the end
+
+`Conversation.total_usage` is the obvious call and it is the wrong one to rely on alone. Read `response.usage_metadata` after every turn and keep the running total yourself. Three reasons, each independent:
+
+**It survives a failure.** A run that dies reports zero, per the caution above. A per-turn tally still holds everything spent up to the last completed turn, which is a far better answer than `null` and a much better one than `0.00`.
+
+**`service_tier` is per request, not per session.** Priority-tier requests bill at a higher rate, and the SDK's own guidance is that overflow traffic is *gracefully downgraded* to standard and billed at standard rates. So a session can straddle two price points, and a single session-level tier cannot express that. **Price each turn at the tier it reports**, not the tier that was configured — the configured one is a request, not a receipt.
+
+**Compaction is visible only turn by turn.** See below.
+
+### Compaction is the cache-rate story
+
+The `Conversation` manages **context compaction**, and the SDK exposes `@hooks.on_compaction` for it. Compaction matters more to this project than to most:
+
+- it is an extra model call over the accumulated history, billed and easy to mistake for a review turn;
+- it **rewrites the prompt prefix**, so the cached prefix stops matching and the following turns pay full input rate again.
+
+A pull-context reviewer is exactly the shape that triggers it — many turns, each appending file contents. So a compaction is very likely *the* explanation when the cache rate in the PR comment comes back low, and without the hook the number is a mystery that invites a wrong fix. Register it, count compactions, and put the count in `review-cost.json` next to the cache rate it explains.
+
 ### The model has to be pinned, and that is a deliberate exception
 
 The SDK's configuration guidance is explicit: *"Avoid setting the model explicitly unless requested. It is generally better to leave the model unset to use the default behavior."*
@@ -61,31 +80,56 @@ The SDK's configuration guidance is explicit: *"Avoid setting the model explicit
 
 So the model is pinned, recorded in `review-cost.json` alongside the figure, and treated as part of the cost contract rather than a tuning knob. Where the identifier itself comes from matters too: the same guidance says never to guess model names or assume they follow a pattern, so the rate table's keys are copied from published pricing rather than inferred.
 
+Worth noting how small the exception actually is: the pinned default, `gemini-3.7-flash`, **is the SDK's own documented default model**. Pinning it changes no behaviour at all. It changes only whether the rate is knowable, which is the entire point.
+
 ### The rate table
 
 Rates are data, not comments, and carry an expiry:
 
 ```python
+# Source: https://ai.google.dev/gemini-api/docs/pricing — verified 2026-08-19.
+# Reconciliation bills through Vertex, so confirm against the Agent Platform
+# pricing page before M2 ships and record which page each rate came from.
 RATES = {
     "gemini-3.7-flash": Rate(
         input=1.50, output=7.50,          # per million tokens, standard tier
         promo=Promo(input=0.75, output=3.75, ends_after="2026-12-31"),
-        cache_read_multiplier=0.1,
+        cache_read_multiplier=0.1,        # context caching $0.075 against $0.75 input
     ),
 }
 ```
 
+Every figure above is copied from the published table, and the comment says where and when. That is not decoration: an uncited rate is indistinguishable from a plausible guess, and a reviewer of this file has no way to tell the two apart without the line. **A rate without a source and a date is a defect**, however right it happens to be.
+
+Two rates the standard table does not cover and that must not be inferred from it: **priority tier**, which `service_tier` can select and which bills higher, and **batch tier**, which does not apply here but sits adjacent on the same page and is easy to read off by mistake.
+
 Three rules the table enforces:
 
-1. **An unknown model reports tokens and no cost.** It never borrows a neighbouring model's rate. A missing number is obvious; a wrong one is invisible and gets quoted in meetings.
+1. **An unknown model — or an unknown service tier — reports tokens and no cost.** It never borrows a neighbouring rate. A missing number is obvious; a wrong one is invisible and gets quoted in meetings. The tier half matters because `ServiceTier` has three members (`STANDARD`, `PRIORITY`, `FLEX`) and only standard rates are published; every probe call reported `STANDARD`, and the other two are opt-in.
 2. **A time-boxed introductory rate has an end date in the data.** Hardcoding the promotional rate overstates savings the day it lapses; hardcoding the standard rate overstates cost while it runs. With the date present, the figure is right on both sides of it and the report says which rate was applied and when it changes.
 3. **The output includes caveats**, such as cache *storage* being billed per token-hour and not counted here.
 
 Rates are overridable for negotiated or non-standard pricing, because a published list price is not what every organisation pays.
 
-## Source 2: billing labels
+## Source 2: billing labels — **not reachable through this SDK**
 
-Vertex AI accepts labels on generation requests. Labelling every request with the PR that caused it makes Cloud Billing itself the ledger:
+🔴 **This section describes something the SDK does not expose, and the design has to change because of it.**
+
+Verified against `0.1.12`: `LocalAgentConfig` has 25 fields and none of them is `labels`. `GeminiModelOptions` — the object that carries per-request model settings — has exactly two fields, `thinking_level` and `service_tier`. A scan of every Pydantic model in `types` for a field matching `label`, `tag` or `metadata` returns one hit, `Step.usage_metadata`, which is token counts. **There is no surface for attaching a billing label to a generation request.**
+
+What that costs this project, stated plainly:
+
+- **Per-PR attribution in Cloud Billing does not exist.** The billing export can attribute spend to a *project*, because WIF puts it there, but not to a repository or a pull request. The query below cannot be written.
+- **Reconciliation weakens from per-PR to per-project-per-day.** Still worth doing — a stale rate or an unpriced model shows up as project-level drift — but it can no longer identify *which* review drifted.
+- **One of the four claimed contributions is gone as designed.** [`prior-art.md`](prior-art.md) lists reconciliation as a contribution. It survives only in the weaker form.
+
+Options, none of them free: attach labels at a layer below the SDK if the endpoint can be constructed with them (`VertexEndpoint` is exported and takes `options`, so this is worth one probe before giving up); accept project-level reconciliation and say so; or run one project per repository, which makes the project boundary do the work the label was going to do and is plausible for a small number of repositories.
+
+**Until that is settled, Source 1 is the only per-PR figure, and it is self-reported.** The README should not claim otherwise.
+
+The original design, kept for reference and for whoever finds the surface:
+
+Vertex AI accepts labels on generation requests. Labelling every request with the PR that caused it would make Cloud Billing itself the ledger:
 
 ```python
 labels = {
@@ -119,15 +163,21 @@ Caveat worth stating plainly: labels are only as good as their coverage. If any 
 
 **The SDK already enforces budgets.** `BudgetConfig` caps a session declaratively:
 
-| field | caps |
-|---|---|
-| `max_model_calls` | model invocations |
-| `max_tool_calls` | tool invocations |
-| `max_input_tokens` | **net uncached** input (prompt minus cached), across the session |
-| `max_output_tokens` | output, including thoughts |
-| `max_total_tokens` | net uncached input + output |
+All five dials are **cumulative across the session**. Verified against `types.BudgetConfig` in the installed `0.1.12` wheel, not inferred:
 
-When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, and so on.
+| field | caps | source docstring |
+|---|---|---|
+| `max_model_calls` | model invocations | "across the session" |
+| `max_tool_calls` | tool invocations | "across the session, regardless of tool source" |
+| `max_input_tokens` | **net uncached** input | "across the session (prompt tokens minus cached content tokens **across all turns**)" |
+| `max_output_tokens` | output | "across the session (candidates **+ thoughts**)" |
+| `max_total_tokens` | net input + output | "across the session … **across all turns**" |
+
+When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, `QUOTA_EXHAUSTED`, and so on.
+
+⚠️ **A draft of this document briefly claimed `max_input_tokens` was per-dispatch and rebuilt the ceiling around that. It was wrong.** The SDK guide's phrase *"evaluated proactively before dispatch"* describes **when the check runs**, not what the counter measures — the counter is a session total, and the check simply happens before sending rather than after. Reading a scope claim into a timing claim inverted the design for one revision. The source docstring is unambiguous and is quoted above so nobody has to take either reading on trust.
+
+**The consequence for the cliff guard:** there is no per-request token cap in `BudgetConfig` at all. Nothing here refuses a single oversized prompt. The 2.9 MB OpenAPI file in [`design.md`](design.md) is stopped by the `view_file` byte cap and by `compaction_threshold`, and by nothing else. That guard is therefore load-bearing rather than belt-and-braces.
 
 **Do not write a hook for this.** An earlier draft of this document proposed a `pre_turn` hook computing cost and calling `stop()`. That was reinventing `BudgetConfig`, worse: it checks only between turns, it has no typed stop reason, and it would have to reimplement the net-uncached arithmetic the SDK already does correctly.
 
@@ -137,22 +187,47 @@ When one trips, the session stops and the response carries a typed `StopReason` 
 def budget_for(max_cost_usd: float, model: str, output_ratio: float = 0.05) -> BudgetConfig:
     """Turn a dollar ceiling into the SDK's token limits.
 
-    output_ratio is the assumed share of spend going to output. It only has to be
-    roughly right: it splits one ceiling into two, and both are enforced.
+    output_ratio is the share of the ceiling reserved for output. It decides how
+    the budget is *split*, not whether it holds — see the arithmetic below.
     """
     rate = effective_rate_for(model)
+
+    out_tokens = max_cost_usd * output_ratio       / rate.output * 1e6
+    in_tokens  = max_cost_usd * (1 - output_ratio) / rate.input  * 1e6
+
     return types.BudgetConfig(
-        max_input_tokens=int(max_cost_usd * (1 - output_ratio) / rate.input * 1e6),
-        max_output_tokens=int(max_cost_usd * output_ratio / rate.output * 1e6),
-        max_model_calls=MAX_CALLS,   # a second guard: a stuck loop is cheap per turn
+        max_input_tokens=int(in_tokens),               # net uncached, session
+        max_output_tokens=int(out_tokens),             # candidates + thoughts
+        max_total_tokens=int(out_tokens + in_tokens),  # backstop on the mix
+        max_model_calls=MAX_CALLS,                     # a stuck loop is cheap per turn
+        max_tool_calls=MAX_TOOL_CALLS,
     )
 ```
 
-Two details make this honest rather than approximate:
+**The pair is a real bound, and the split does not have to be right for it to hold.** Output is capped at `out_tokens`, and the total at `out_tokens + in_tokens`, so the most expensive session the SDK will permit spends `out_tokens` at the output rate and the remaining `in_tokens` at the input rate — exactly `max_cost_usd`. A wrong `output_ratio` wastes headroom on one dial while the other stops the run early; it does not let the run exceed the ceiling. That property is worth more than a well-tuned guess.
 
-**`max_input_tokens` counts net uncached input**, which is the cost-relevant quantity. A cheaper cached read does not consume the budget at the same rate as a fresh one, which is exactly right and is not something a naive token counter would get correct.
+Two details keep it honest rather than approximate:
 
-**Cached reads still cost something**, so a session that stays under `max_input_tokens` entirely on cache hits will spend a little more than zero. The dollar ceiling is therefore a **near-bound, not a hard bound**, and is documented as such. The reported figure from Source 1 remains the accurate one.
+**The token dials count net uncached input**, which is the cost-relevant quantity. A cheaper cached read does not consume the budget at the same rate as a fresh one, which is exactly right and is not something a naive token counter would get correct.
+
+**Cached reads still cost something** while consuming no net input, so a session running almost entirely on cache hits spends a little more than the arithmetic above allows. The dollar ceiling is therefore a **near-bound, not a hard bound**, and is documented as such. The reported figure from Source 1 remains the accurate one.
+
+### The retry budget nobody counts
+
+Two SDK defaults spend money without appearing anywhere in the design above:
+
+- **API retries** — 2 by default, on 429s, 5xx and dropped connections, with exponential backoff.
+- **Model output retries** — **4 by default**, when the model emits a malformed tool call or output that fails `response_schema` validation.
+
+The second is the one that matters here. A schema violation on the final turn re-prompts the model at full context up to four more times, so **the most expensive turn of a review is also the one most likely to be billed five times**. That is invisible in a design that reasons about turns, and it interacts badly with a dollar ceiling.
+
+```python
+retry_config=types.RetryConfig(
+    model_output_retry=types.ModelOutputRetryConfig(max_retries=1),
+)
+```
+
+Whether those retries count against `BudgetConfig`'s dials is unverified and belongs in M0. **Never use `RetryConfig.benchmark()` here** — it is an unbounded-API-retry preset intended for load tests, and unbounded is the opposite of what a cost-capped CI job wants. Retry counts belong in `review-cost.json` for the same reason token counts do.
 
 ### Reporting the stop
 
@@ -187,6 +262,9 @@ Cache rate is included because it is the single most actionable number: a low hi
     "prompt": 128400, "cached": 118100,
     "candidates": 6200, "thoughts": 1900, "total": 136500
   },
+  "service_tiers": {"standard": 14},
+  "compactions": 1,
+  "retries": {"api": 0, "model_output": 2},
   "cost_usd": 0.0412,
   "rate_applied": "introductory",
   "budget_usd": 0.50,
