@@ -105,7 +105,7 @@ Two rates the standard table does not cover and that must not be inferred from i
 
 Three rules the table enforces:
 
-1. **An unknown model reports tokens and no cost.** It never borrows a neighbouring model's rate. A missing number is obvious; a wrong one is invisible and gets quoted in meetings.
+1. **An unknown model — or an unknown service tier — reports tokens and no cost.** It never borrows a neighbouring rate. A missing number is obvious; a wrong one is invisible and gets quoted in meetings. The tier half matters because `ServiceTier` has three members (`STANDARD`, `PRIORITY`, `FLEX`) and only standard rates are published; every probe call reported `STANDARD`, and the other two are opt-in.
 2. **A time-boxed introductory rate has an end date in the data.** Hardcoding the promotional rate overstates savings the day it lapses; hardcoding the standard rate overstates cost while it runs. With the date present, the figure is right on both sides of it and the report says which rate was applied and when it changes.
 3. **The output includes caveats**, such as cache *storage* being billed per token-hour and not counted here.
 
