@@ -38,9 +38,12 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 - [ ] Tool surface, layer 2: `policy.deny_all()` then the named allows. **Verify `create_file` / `edit_file` are actually refused at runtime** rather than assumed — the SDK default allows them
 - [ ] Set `workspaces` so `policy.workspace_only()` is auto-applied; set `app_data_dir` to an absolute runner temp path so agent scratch stays out of the checkout; set `env` to a minimal dict so the MCP container does not inherit every workflow secret
 - [ ] `view_file` byte cap with a loud truncation marker (the one thing the prior art does not do) — implemented as a same-name custom tool overriding the built-in, since the built-in has no configurable limit
-- [ ] GitHub MCP server with a pinned image, an `enabled_tools` allowlist, **and** the matching explicit tool list in `policy.allow(server, [...])` — the list form is a specific allow rather than a prefix wildcard
-- [ ] Decide reporting: incremental MCP posting vs `response_schema`, on evidence — see the conflict with the budget guard in [`design.md`](design.md)
-- [ ] **The runner submits, not the agent.** Establish whether a budget-stopped session leaves a submittable pending review; a pending review nobody submits is invisible, which is the same outcome as no review at all
+- [ ] GitHub MCP server — hosted (`api.githubcopilot.com/mcp/`, 44 tools) or pinned container — with an `enabled_tools` allowlist **and** the matching list in `policy.allow(server, [...])`. Real tool names: `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents`
+- [x] Reporting decided: incremental MCP posting, runner-owned submit — see [`probe-results.md`](probe-results.md)
+- [ ] **The runner submits, not the agent.** On any non-`UNSPECIFIED` stop, find the `PENDING` review and `POST /pulls/{n}/reviews/{id}/events` with the stop reason as the body — verified working
+- [ ] Validate the MCP `enabled_tools` list against the server's `tools/list` at startup: the SDK exposes names the server does not have, and the failure costs a model call
+- [ ] Allow `list_resources` explicitly, or accept one wasted denied call per run
+- [ ] Put exact MCP parameter names and casing in `system_instructions` (`pullNumber`, `subjectType: LINE`) — worth three to four turns per review
 - [ ] Triggers: `pull_request`, plus a comment command to re-run
 - [ ] Job-level concurrency keyed by PR and event, so pushes supersede
 
@@ -122,12 +125,12 @@ Evidence for every closed row is in [`probe-results.md`](probe-results.md), repr
 | Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | **Open.** Budget stops confirmed working and usage survives them; the retry interaction specifically is untested |
 | Q6 | What is the built-in `view_file` parameter contract? | M1 | ✅ **Closed.** `AbsolutePath`, `StartLine`, `EndLine` — captured from a real call. Ranged reads supported |
 | Q7 | Does a failed run really report zero tokens? | M2 | ✅ **Closed.** A hard failure raises `AntigravityConnectionError`; it does not silently report 0. Catch it and record `null` |
-| Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | **Open.** Needs a live run against a scratch PR |
+| Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | ✅ **Closed — yes to both.** A stop leaves a `PENDING` review with 0 visible comments; the runner submits it with one `POST /reviews/{id}/events`. Runner-owned publication is proven necessary and cheap |
 | Q9 | Does `skills_paths` inject frontmatter unconditionally? | M4 | ✅ **Closed.** A skill's *body* rule was applied to an unrelated prompt with no discovery step. Untested at scale |
 | Q10 | Do Vertex rates match the AI Studio rates the table cites? Priority and flex tiers? | M2 exit | **Open.** Fetch attempted 2026-08-19, page truncated. Note `ServiceTier` has three members — `STANDARD`, `PRIORITY`, `FLEX` — so there are three rate columns to source, not two |
 | Q11 | **Any SDK surface for per-request billing labels?** | M2 Source 2 | ✅ **Closed — no.** No `labels` field on `LocalAgentConfig` (25 fields), none on `GeminiModelOptions` (`thinking_level`, `service_tier` only), and no label/tag field anywhere in `types`. **Source 2 is not implementable as designed** |
 | Q12 | Which single-shot reviewer is the baseline, on which fixtures? | M5 | A decision, not a discovery. Make it when M5 starts |
-| Q13 | Incremental MCP posting, `response_schema`, or `finish_tool_schema_json`? | M1 exit | Downstream of Q8. Note introspection found a **third** option the plan had not considered: `CapabilitiesConfig.finish_tool_schema_json` constrains the `finish` tool's own schema |
+| Q13 | Incremental MCP posting, `response_schema`, or `finish_tool_schema_json`? | M1 exit | ✅ **Decided — incremental MCP + runner-owned submit.** Q8 shows the partial work survives and is recoverable; a budget stop returns empty text, so no single-response path can match that |
 
 **Q11 invalidates a design rather than adjusting one.** Per-PR attribution in Cloud Billing is not reachable, so reconciliation drops to project-level. That removes one of the four contributions [`prior-art.md`](prior-art.md) claims, and the README has been corrected rather than left to imply otherwise. One escape remains worth a probe: `VertexEndpoint` is exported and takes an `options` object, so labels may be reachable a layer below the config.
 

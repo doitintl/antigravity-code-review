@@ -94,9 +94,44 @@ ZORBLAX: 2 + 2 = 4.
 
 One delegation to a trivial subagent reported `prompt=44,961` on the root conversation — four times the all-tools baseline for a two-line poem. Consistent with subagent turns being counted in the root's `total_usage`, but this was not run against a control, so it is evidence rather than a settled answer. `enable_subagents=False` stands regardless.
 
+## Q8 — a budget stop leaves an invisible review, and the runner can rescue it
+
+Run against a scratch PR with GitHub's hosted MCP server (`api.githubcopilot.com/mcp/`, 44 tools) and `max_model_calls` tuned to halt mid-review.
+
+**The happy path works.** With enough budget the agent read the PR, opened a pending review, added two inline comments and submitted — a real review, both findings on the right lines.
+
+**The stopped path confirms the defect.** With a tighter budget:
+
+```
+stop_reason = MAX_MODEL_CALLS_EXCEEDED
+GET /pulls/2/reviews   → [{ id: 4971201513, state: "PENDING" }]
+GET /pulls/2/comments  → count = 0
+```
+
+A pending review existed and **nothing was visible to anyone**. That is the failure predicted in [`design.md`](design.md): the agent had done work, and the PR showed no sign of it. Worse than a clean failure, because the draft is *somewhere*.
+
+**The rescue works, and it is one call:**
+
+```
+POST /pulls/2/reviews/4971201513/events   event=COMMENT
+  → { id: 4971201513, state: "COMMENTED" }
+```
+
+So "the runner, not the agent, owns publication" is now proven both **necessary** and **cheap**. On any non-`UNSPECIFIED` stop reason, the runner looks for a `PENDING` review by its own identity and submits it with the stop reason as the body. No agent involvement, no second session.
+
+### Three MCP lessons, each of them costing real turns
+
+**`enabled_tools` on an MCP server is an exposure filter, not a validator.** The first attempt listed five plausible-sounding tool names that the server does not have. The SDK exposed them to the model anyway; the failure arrived at call time as `unknown tool "create_pending_pull_request_review": Bad Request`, after a model call had already been spent on it. [`design.md`](design.md) calls `enabled_tools` "itself a security boundary" — true for *restricting*, but it does not tell you a name is wrong. **Validate the list against `tools/list` at startup.** The real names are `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents` — which is what the plan originally had.
+
+**`policy.allow(github_mcp)` does not cover `list_resources`.** The agent's first move was `list_resources`, an SDK-level MCP tool sitting outside the server's own namespace. `deny_all()` blocked it and a model call was wasted on the refusal — a live demonstration of the cost argued for in "Why capabilities come before policies". Allow it explicitly or budget for the wasted turn.
+
+**Parameter guessing is a measurable line item.** The model burned three model calls discovering that `pull_request_read` wants `pullNumber` and not `pull_number`, then hit `subjectType` expecting `LINE` rather than `line`. GitHub's consolidated multi-method tools (`pull_request_read` with `method="get_files"`) are compact in the schema and expensive at the point of use. **Put the exact parameter names and casing in `system_instructions`** — that is not prompt fussiness, it is three or four turns per review, measured.
+
 ## Still open
 
 - **Q1 (CI half).** WIF token exchange inside a GitHub Actions runner. The SDK half is proven.
-- **Q8.** Whether a budget-stopped session leaves a submittable pending review. Needs the GitHub MCP server and a scratch PR.
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
 - **Q4.** Subagent roll-up, properly controlled.
+- **Q5.** Whether retries count against `max_model_calls`.
+
+Scratch repo for these runs: `SaschaHeyer/agy-probe-q8` (private, two PRs). Left in place so the runs can be re-inspected; delete when done.
