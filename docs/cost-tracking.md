@@ -87,14 +87,21 @@ Worth noting how small the exception actually is: the pinned default, `gemini-3.
 Rates are data, not comments, and carry an expiry:
 
 ```python
+# Source: https://ai.google.dev/gemini-api/docs/pricing — verified 2026-08-19.
+# Reconciliation bills through Vertex, so confirm against the Agent Platform
+# pricing page before M2 ships and record which page each rate came from.
 RATES = {
     "gemini-3.7-flash": Rate(
         input=1.50, output=7.50,          # per million tokens, standard tier
         promo=Promo(input=0.75, output=3.75, ends_after="2026-12-31"),
-        cache_read_multiplier=0.1,
+        cache_read_multiplier=0.1,        # context caching $0.075 against $0.75 input
     ),
 }
 ```
+
+Every figure above is copied from the published table, and the comment says where and when. That is not decoration: an uncited rate is indistinguishable from a plausible guess, and a reviewer of this file has no way to tell the two apart without the line. **A rate without a source and a date is a defect**, however right it happens to be.
+
+Two rates the standard table does not cover and that must not be inferred from it: **priority tier**, which `service_tier` can select and which bills higher, and **batch tier**, which does not apply here but sits adjacent on the same page and is easy to read off by mistake.
 
 Three rules the table enforces:
 
