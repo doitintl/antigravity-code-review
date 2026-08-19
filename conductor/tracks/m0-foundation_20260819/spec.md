@@ -32,6 +32,10 @@ This is not incidental. Q11 established that the SDK exposes no surface for per-
 
 **FR6 — SDK example parity.** Run the SDK's own `budget_limits.py` and `observability.py` against Vertex; both are load-bearing for M2 and M3.
 
+⚠️ **These do not ship in the wheel.** The installed package contains no `examples/` directory — verified against `0.1.12`. They live in the source repository at `google-antigravity/antigravity-sdk-python/examples/getting_started/`, which also holds 24 other examples, with 10 more under `deep_dives/` including `observability_otel.py`. Fetch them from a **tag matching the pinned version**, not from `main`: an example from a newer revision would silently test a different SDK than the one this project pins, which is the same class of error as an uncited rate.
+
+This also corrects [`../../../docs/prior-art.md`](../../../docs/prior-art.md), which says "the SDK ships 25 runnable examples" — it does not ship them at all in the distributed artefact. 34 exist in source.
+
 **FR7 — Q4, subagent roll-up.** A controlled run: identical task with and without delegation, comparing root `total_usage`, and whether subagent tokens count against `BudgetConfig`.
 
 **FR8 — Q5, retry accounting.** Force a `response_schema` violation; determine whether model-output retries consume `max_model_calls` and appear in usage.

@@ -46,7 +46,9 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] Determine what `manage_task` and `schedule` do, and whether either writes
   - [ ] If either writes, raise it as a security finding against the posture in `docs/design.md`
 - [ ] **Task: SDK example parity (FR6)** *(integration)*
-  - [ ] Run `budget_limits.py` and `observability.py` against Vertex; note any divergence from the API-key path
+  - [ ] Fetch `budget_limits.py` and `observability.py` from `google-antigravity/antigravity-sdk-python`, **from the tag matching the pinned `0.1.12`**, not from `main` — they do not ship in the wheel
+  - [ ] Run both against Vertex (`location="global"`); note any divergence from the API-key path they were written for
+  - [ ] Correct `docs/prior-art.md`: the examples are not shipped in the distributed artefact, and there are 34 in source rather than 25
 - [ ] **Task: Q4 — subagent roll-up (FR7)** *(integration)*
   - [ ] Controlled pair: identical task with and without delegation; compare root `total_usage`
   - [ ] Determine whether subagent tokens count against `BudgetConfig`
