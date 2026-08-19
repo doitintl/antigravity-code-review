@@ -11,17 +11,18 @@ Everything else assumes Workload Identity Federation → Application Default Cre
 Both published implementations authenticate with an API key secret, so **nobody has demonstrated the WIF path in CI**. The SDK side is supported (`vertex=True` with ADC, and the codelab's agent falls back to it), so this is wiring rather than research — but it is unproven, and everything else depends on it.
 
 - [ ] A workflow that authenticates via WIF and completes one trivial agent call on Vertex
-- [ ] Configure with explicit `vertex=True, project=, location=` — the documented surface — rather than relying on environment-variable pickup, which is inherited convention
-- [ ] Confirm `Conversation.total_usage` is populated on a **Vertex** run, not only on an API-key run
-- [ ] Re-verify the tool names against the installed version rather than trusting the examples
+- [x] Configure with explicit `vertex=True, project=, location=`. **`location` must be `global`** — `us-central1` returns a 404 for `gemini-3.7-flash`
+- [x] `Conversation.total_usage` is populated on Vertex, and reports `service_tier=STANDARD`
+- [x] Tool names verified against `0.1.12`. **But the model also reports `manage_task` and `schedule`** — undocumented, not in `BuiltinTools`, not removable via `enabled_tools`
+- [ ] Get the *real* registered tool list out of the harness rather than out of the model, and find out what `manage_task` and `schedule` can do
 - [ ] Run the SDK's own `budget_limits.py` and `observability.py` on Vertex, since both are load-bearing here
-- [ ] **Settle the scope of each `BudgetConfig` dial**: is `max_input_tokens` per-dispatch or cumulative? The dollar ceiling in M3 is built on the answer
-- [ ] **Settle whether `CapabilitiesConfig(enabled_tools=...)` is exclusive or additive.** The docs say both. The first layer of the tool boundary depends on it
+- [x] `BudgetConfig` dial scopes — all five are cumulative across the session
+- [x] `enabled_tools` is an exclusive allowlist. **Measured: it cuts the per-turn prompt floor from 10,889 to 4,470 tokens**
 - [ ] **Confirm whether subagent tokens roll into `total_usage` and count against `BudgetConfig`.** Subagents default to on
 - [ ] Confirm whether retries — 2 API, 4 model-output by default — count against `max_model_calls` and appear in usage
-- [ ] Confirm the built-in `view_file` parameter contract (the override example takes `AbsolutePath`) and whether it supports ranged reads
-- [ ] Confirm whether a failed run really reports zero tokens, and how a partial failure presents
-- [ ] **Find the SDK surface for attaching billing labels to generation requests** — see Q11, the one open question that can invalidate a design rather than adjust it
+- [x] `view_file` takes `AbsolutePath`, `StartLine`, `EndLine`; ranged reads supported
+- [x] A hard failure raises `AntigravityConnectionError` rather than reporting zero
+- [x] No billing-label surface exists. Source 2 is struck; see [`probe-results.md`](probe-results.md)
 - [x] Wheel platform requirements — `0.1.12` publishes `manylinux_2_17_x86_64`, so `ubuntu-latest` is fine; `macosx_11_0_arm64` means the probe runs locally; Python ≥3.10. At 32–38 MB per wheel, the compiled-runtime supply-chain note is confirmed rather than suspected
 
 If ADC does not work headlessly, the documented fallback is Vertex Express Mode (`vertex=True, api_key=...`) — spend stays attributable to a project, at the cost of a key.
@@ -65,19 +66,21 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 Enforcement is the SDK's job. This milestone is the unit conversion and the reporting around it.
 
 - [ ] `max_cost_usd` input, translated into `BudgetConfig` token limits via the rate table
-- [ ] Bind the ceiling on the **cumulative** dials — `max_total_tokens` and `max_output_tokens` — so a wrong output-share assumption wastes headroom rather than breaking the bound
-- [ ] Use `max_input_tokens` for its actual job: refusing one oversized prompt before dispatch
+- [ ] Bind the ceiling on `max_input_tokens` + `max_output_tokens`, with `max_total_tokens` as a backstop — all three are session-cumulative
+- [ ] **Note there is no per-request guard in the SDK.** The `view_file` byte cap is the only thing stopping one oversized prompt
 - [ ] `max_model_calls` and `max_tool_calls` as further guards, since a stuck loop is cheap per turn and still unbounded
 - [ ] Surface `StopReason` in the PR comment, in plain words, and verbatim in the artifact
 - [ ] A budget stop is **not** a workflow failure
 - [ ] Document that the ceiling is a near-bound: cached reads still cost a little while consuming no `max_input_tokens`
+- [ ] Budget stops preserve usage but return **empty text** — the cost line survives, the review body does not
 
 **Exit:** a deliberately pathological PR stops at its ceiling, says why, and still posts what it found.
 
 ## M4 — Repository rules
 
 - [ ] Supply rules as an Agent Skill via `skills_paths`, the SDK's own mechanism
-- [ ] **Determine whether `skills_paths` injects unconditionally or is discovered on demand.** If discovery is optional, rules that must always apply move to `system_instructions`
+- [x] `skills_paths` applies a skill's body unprompted — verified with a sentinel rule
+- [ ] Re-test at scale: one small skill injected; ten skills or a large body may not
 - [ ] Fail loudly if a configured rules path is missing, rather than reviewing generically while appearing repo-aware
 - [ ] Document the size limit for rules
 
@@ -108,17 +111,19 @@ Every unresolved question in this plan, in one place, because a question buried 
 
 Status as of the `0.1.12` introspection pass on 2026-08-19. **Closed** means answered from the installed package or published source, not inferred.
 
+Evidence for every closed row is in [`probe-results.md`](probe-results.md), reproducible from [`probe/`](../probe).
+
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit, everything | **Open.** The only question that needs CI rather than a laptop |
+| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit | **Half closed.** ADC authenticated from a non-interactive process on the first attempt. Only the WIF token exchange inside a runner is still unproven |
 | Q2 | Are the `BudgetConfig` dials per-dispatch or cumulative? | M3 | ✅ **Closed — all five are cumulative across the session.** Quoted from the source docstring in [`cost-tracking.md`](cost-tracking.md). A draft claimed otherwise and was wrong |
 | Q3 | Is `CapabilitiesConfig(enabled_tools=...)` exclusive or additive? | M1 | ✅ **Closed — explicit allowlist, mutually exclusive with `disabled_tools`.** The SDK's own docstring also endorses preferring it over `policy.deny()` |
-| Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | **Open.** Needs a live run. Mooted in practice by `enable_subagents=False` |
-| Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | **Open.** Needs a live run |
-| Q6 | What is the built-in `view_file` parameter contract? | M1 | **Open.** Needs a live session to introspect the registered tool schema |
-| Q7 | Does a failed run really report zero tokens? | M2 | **Open.** Needs a live run with bad credentials |
+| Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | **Open.** One delegation reported 45k root prompt tokens — evidence of roll-up, no control run. Mooted by `enable_subagents=False` |
+| Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | **Open.** Budget stops confirmed working and usage survives them; the retry interaction specifically is untested |
+| Q6 | What is the built-in `view_file` parameter contract? | M1 | ✅ **Closed.** `AbsolutePath`, `StartLine`, `EndLine` — captured from a real call. Ranged reads supported |
+| Q7 | Does a failed run really report zero tokens? | M2 | ✅ **Closed.** A hard failure raises `AntigravityConnectionError`; it does not silently report 0. Catch it and record `null` |
 | Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | **Open.** Needs a live run against a scratch PR |
-| Q9 | Does `skills_paths` inject frontmatter unconditionally? | M4 | **Open.** Needs a live run plus a log |
+| Q9 | Does `skills_paths` inject frontmatter unconditionally? | M4 | ✅ **Closed.** A skill's *body* rule was applied to an unrelated prompt with no discovery step. Untested at scale |
 | Q10 | Do Vertex rates match the AI Studio rates the table cites? Priority and flex tiers? | M2 exit | **Open.** Fetch attempted 2026-08-19, page truncated. Note `ServiceTier` has three members — `STANDARD`, `PRIORITY`, `FLEX` — so there are three rate columns to source, not two |
 | Q11 | **Any SDK surface for per-request billing labels?** | M2 Source 2 | ✅ **Closed — no.** No `labels` field on `LocalAgentConfig` (25 fields), none on `GeminiModelOptions` (`thinking_level`, `service_tier` only), and no label/tag field anywhere in `types`. **Source 2 is not implementable as designed** |
 | Q12 | Which single-shot reviewer is the baseline, on which fixtures? | M5 | A decision, not a discovery. Make it when M5 starts |
