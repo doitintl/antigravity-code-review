@@ -53,6 +53,25 @@ cost = (
 
 ⚠️ **Thinking tokens move the total unpredictably.** Also from the SDK's own guide: they *"can significantly increase the total count unexpectedly"*. They bill at the output rate and are reported separately, so any estimate that sums only prompt and candidates will be wrong, and wrong in the direction that flatters the tool.
 
+### Accumulate per turn, do not read the total at the end
+
+`Conversation.total_usage` is the obvious call and it is the wrong one to rely on alone. Read `response.usage_metadata` after every turn and keep the running total yourself. Three reasons, each independent:
+
+**It survives a failure.** A run that dies reports zero, per the caution above. A per-turn tally still holds everything spent up to the last completed turn, which is a far better answer than `null` and a much better one than `0.00`.
+
+**`service_tier` is per request, not per session.** Priority-tier requests bill at a higher rate, and the SDK's own guidance is that overflow traffic is *gracefully downgraded* to standard and billed at standard rates. So a session can straddle two price points, and a single session-level tier cannot express that. **Price each turn at the tier it reports**, not the tier that was configured — the configured one is a request, not a receipt.
+
+**Compaction is visible only turn by turn.** See below.
+
+### Compaction is the cache-rate story
+
+The `Conversation` manages **context compaction**, and the SDK exposes `@hooks.on_compaction` for it. Compaction matters more to this project than to most:
+
+- it is an extra model call over the accumulated history, billed and easy to mistake for a review turn;
+- it **rewrites the prompt prefix**, so the cached prefix stops matching and the following turns pay full input rate again.
+
+A pull-context reviewer is exactly the shape that triggers it — many turns, each appending file contents. So a compaction is very likely *the* explanation when the cache rate in the PR comment comes back low, and without the hook the number is a mystery that invites a wrong fix. Register it, count compactions, and put the count in `review-cost.json` next to the cache rate it explains.
+
 ### The model has to be pinned, and that is a deliberate exception
 
 The SDK's configuration guidance is explicit: *"Avoid setting the model explicitly unless requested. It is generally better to leave the model unset to use the default behavior."*
@@ -60,6 +79,8 @@ The SDK's configuration guidance is explicit: *"Avoid setting the model explicit
 **This project sets it anyway, and the reason is this document.** Pricing requires knowing the rate, the rate depends on the model, and **the SDK does not report which model actually served a request** — `UsageMetadata` carries token counts and a service tier, not a model identifier. Leave the model unset and you get tokens you cannot price.
 
 So the model is pinned, recorded in `review-cost.json` alongside the figure, and treated as part of the cost contract rather than a tuning knob. Where the identifier itself comes from matters too: the same guidance says never to guess model names or assume they follow a pattern, so the rate table's keys are copied from published pricing rather than inferred.
+
+Worth noting how small the exception actually is: the pinned default, `gemini-3.7-flash`, **is the SDK's own documented default model**. Pinning it changes no behaviour at all. It changes only whether the rate is knowable, which is the entire point.
 
 ### The rate table
 
@@ -119,15 +140,19 @@ Caveat worth stating plainly: labels are only as good as their coverage. If any 
 
 **The SDK already enforces budgets.** `BudgetConfig` caps a session declaratively:
 
-| field | caps |
-|---|---|
-| `max_model_calls` | model invocations |
-| `max_tool_calls` | tool invocations |
-| `max_input_tokens` | **net uncached** input (prompt minus cached), across the session |
-| `max_output_tokens` | output, including thoughts |
-| `max_total_tokens` | net uncached input + output |
+| field | caps | scope |
+|---|---|---|
+| `max_model_calls` | model invocations | session |
+| `max_tool_calls` | tool invocations | session |
+| `max_input_tokens` | **net uncached** input (prompt minus cached) | **evaluated proactively before each dispatch** |
+| `max_output_tokens` | generated tokens, candidate **and** thinking | cumulative |
+| `max_total_tokens` | net uncached input + output | cumulative |
 
 When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, and so on.
+
+🔴 **The scope column is where an earlier draft of this document was wrong, and the error was load-bearing.** It treated `max_input_tokens` as a session total and built the dollar ceiling on it. The SDK describes it as *"evaluated proactively before dispatch"*, computing net uncached prompt tokens for **that request**, while only `max_output_tokens` and `max_total_tokens` are described as tracking cumulative consumption. A per-request cap does not bound a session: twenty turns at 90k net input each never trip a 100k limit, and the ceiling silently fails to hold for the exact workload this project exists to bound. Confirm the scope of all three in M0 before trusting any of them.
+
+That correction turns out to be a gift. `max_input_tokens` is *better* as a per-dispatch cap than it was as a session one, because a single oversized prompt is precisely the failure this project set out to avoid — the 2.9 MB OpenAPI file in [`design.md`](design.md) is one dispatch, not twenty. So it becomes the cliff guard, and the cumulative dials carry the budget.
 
 **Do not write a hook for this.** An earlier draft of this document proposed a `pre_turn` hook computing cost and calling `stop()`. That was reinventing `BudgetConfig`, worse: it checks only between turns, it has no typed stop reason, and it would have to reimplement the net-uncached arithmetic the SDK already does correctly.
 
@@ -137,22 +162,51 @@ When one trips, the session stops and the response carries a typed `StopReason` 
 def budget_for(max_cost_usd: float, model: str, output_ratio: float = 0.05) -> BudgetConfig:
     """Turn a dollar ceiling into the SDK's token limits.
 
-    output_ratio is the assumed share of spend going to output. It only has to be
-    roughly right: it splits one ceiling into two, and both are enforced.
+    output_ratio is the share of the ceiling reserved for output. It decides how
+    the budget is *split*, not whether it holds — see the arithmetic below.
     """
     rate = effective_rate_for(model)
+
+    out_tokens = max_cost_usd * output_ratio       / rate.output * 1e6
+    in_tokens  = max_cost_usd * (1 - output_ratio) / rate.input  * 1e6
+
     return types.BudgetConfig(
-        max_input_tokens=int(max_cost_usd * (1 - output_ratio) / rate.input * 1e6),
-        max_output_tokens=int(max_cost_usd * output_ratio / rate.output * 1e6),
-        max_model_calls=MAX_CALLS,   # a second guard: a stuck loop is cheap per turn
+        # cumulative, and the ceiling that actually binds
+        max_total_tokens=int(out_tokens + in_tokens),
+        # cumulative, and includes thinking tokens
+        max_output_tokens=int(out_tokens),
+        # per-dispatch: refuse one oversized prompt, unrelated to the budget
+        max_input_tokens=SINGLE_PROMPT_CAP,
+        # a stuck loop is cheap per turn and still unbounded
+        max_model_calls=MAX_CALLS,
+        max_tool_calls=MAX_TOOL_CALLS,
     )
 ```
 
-Two details make this honest rather than approximate:
+**The pair is a real bound, and the split does not have to be right for it to hold.** Output is capped at `out_tokens`, and the total at `out_tokens + in_tokens`, so the most expensive session the SDK will permit spends `out_tokens` at the output rate and the remaining `in_tokens` at the input rate — exactly `max_cost_usd`. A wrong `output_ratio` wastes headroom on one dial while the other stops the run early; it does not let the run exceed the ceiling. That property is worth more than a well-tuned guess.
 
-**`max_input_tokens` counts net uncached input**, which is the cost-relevant quantity. A cheaper cached read does not consume the budget at the same rate as a fresh one, which is exactly right and is not something a naive token counter would get correct.
+Two details keep it honest rather than approximate:
 
-**Cached reads still cost something**, so a session that stays under `max_input_tokens` entirely on cache hits will spend a little more than zero. The dollar ceiling is therefore a **near-bound, not a hard bound**, and is documented as such. The reported figure from Source 1 remains the accurate one.
+**The token dials count net uncached input**, which is the cost-relevant quantity. A cheaper cached read does not consume the budget at the same rate as a fresh one, which is exactly right and is not something a naive token counter would get correct.
+
+**Cached reads still cost something** while consuming no net input, so a session running almost entirely on cache hits spends a little more than the arithmetic above allows. The dollar ceiling is therefore a **near-bound, not a hard bound**, and is documented as such. The reported figure from Source 1 remains the accurate one.
+
+### The retry budget nobody counts
+
+Two SDK defaults spend money without appearing anywhere in the design above:
+
+- **API retries** — 2 by default, on 429s, 5xx and dropped connections, with exponential backoff.
+- **Model output retries** — **4 by default**, when the model emits a malformed tool call or output that fails `response_schema` validation.
+
+The second is the one that matters here. A schema violation on the final turn re-prompts the model at full context up to four more times, so **the most expensive turn of a review is also the one most likely to be billed five times**. That is invisible in a design that reasons about turns, and it interacts badly with a dollar ceiling.
+
+```python
+retry_config=types.RetryConfig(
+    model_output_retry=types.ModelOutputRetryConfig(max_retries=1),
+)
+```
+
+Whether those retries count against `BudgetConfig`'s dials is unverified and belongs in M0. **Never use `RetryConfig.benchmark()` here** — it is an unbounded-API-retry preset intended for load tests, and unbounded is the opposite of what a cost-capped CI job wants. Retry counts belong in `review-cost.json` for the same reason token counts do.
 
 ### Reporting the stop
 
@@ -187,6 +241,9 @@ Cache rate is included because it is the single most actionable number: a low hi
     "prompt": 128400, "cached": 118100,
     "candidates": 6200, "thoughts": 1900, "total": 136500
   },
+  "service_tiers": {"standard": 14},
+  "compactions": 1,
+  "retries": {"api": 0, "model_output": 2},
   "cost_usd": 0.0412,
   "rate_applied": "introductory",
   "budget_usd": 0.50,
