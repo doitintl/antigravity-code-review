@@ -22,20 +22,20 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 2 — The green run (exit criterion)
 
-- [ ] **Task: Probe entrypoint** *(logic + integration — split into both)*
-  - [ ] `m0_probe.py`: one trivial agent call, `vertex=True`, explicit `project`, `location="global"`, tight `BudgetConfig`
-  - [ ] *Logic:* usage-formatting function — prompt / cached / candidates / thoughts / total / `service_tier` — unit tested against a synthetic `UsageMetadata`, including the all-`None` case
-  - [ ] Non-zero exit if usage is absent or zero, so a silent no-op cannot pass as green
-- [ ] **Task: CI workflow** *(integration)*
-  - [ ] `.github/workflows/m0-foundation.yml` on `workflow_dispatch` and push to this branch
-  - [ ] `permissions: id-token: write, contents: read`
-  - [ ] `google-github-actions/auth` with WIF, pinned by commit SHA, **no `credentials_json`**
-  - [ ] Install `google-antigravity==0.1.12` via uv; assert the `manylinux` wheel resolves on `ubuntu-latest`
-  - [ ] Fail the job if any credential-shaped input is set
-- [ ] **Task: Get it green** *(integration)*
-  - [ ] Run, capture the token count, confirm no credential appears in the log
-  - [ ] **If ADC fails headlessly:** record the failure verbatim, try Express Mode, and if that proves necessary, exit M0 *red* and correct the "no API keys" claim in `README.md` rather than dropping it quietly
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Probe entrypoint** *(logic + integration — split into both)*
+  - [x] `m0_probe.py`: one trivial agent call, `vertex=True`, explicit `project`, `location="global"`, tight `BudgetConfig`
+  - [x] *Logic:* usage-formatting function — prompt / cached / candidates / thoughts / total / `service_tier` — unit tested against a synthetic `UsageMetadata`, including the all-`None` case
+  - [x] Non-zero exit if usage is absent or zero, so a silent no-op cannot pass as green
+- [x] **Task: CI workflow** *(integration)*
+  - [x] `.github/workflows/m0-foundation.yml` on `workflow_dispatch` and push to this branch
+  - [x] `permissions: id-token: write, contents: read`
+  - [x] `google-github-actions/auth` with WIF, pinned by commit SHA, **no `credentials_json`**
+  - [x] Install `google-antigravity==0.1.12` via uv; assert the `manylinux` wheel resolves on `ubuntu-latest`
+  - [x] Fail the job if any credential-shaped input is set
+- [x] **Task: Get it green** *(integration)*
+  - [x] Run, capture the token count, confirm no credential appears in the log
+  - [x] **If ADC fails headlessly:** record the failure verbatim, try Express Mode, and if that proves necessary, exit M0 *red* and correct the "no API keys" claim in `README.md` rather than dropping it quietly
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 3 — Close the remaining verification items
 

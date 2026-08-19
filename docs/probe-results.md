@@ -127,6 +127,39 @@ So "the runner, not the agent, owns publication" is now proven both **necessary*
 
 **Parameter guessing is a measurable line item.** The model burned three model calls discovering that `pull_request_read` wants `pullNumber` and not `pull_number`, then hit `subjectType` expecting `LINE` rather than `line`. GitHub's consolidated multi-method tools (`pull_request_read` with `method="get_files"`) are compact in the schema and expensive at the point of use. **Put the exact parameter names and casing in `system_instructions`** — that is not prompt fussiness, it is three or four turns per review, measured.
 
+## Q1 — WIF works headlessly in CI ✅
+
+Run 32270032966 on `ubuntu-latest`, `google-antigravity==0.1.12`, no API key present:
+
+```
+keyless: credential type is 'external_account' (urn:ietf:params:oauth:token-type:jwt)  OK
+project: sascha-playground-doit · location: global · model: gemini-3.7-flash
+reply: 'OK' · stop: StopReason.UNSPECIFIED
+3,768 in (0% cached) · 1 out · 28 thinking · 3,797 total · tier=standard
+PASS
+```
+
+**The risk the roadmap called "the one question that can sink the project" is retired.** Neither published reviewer had demonstrated this path; both use an API key secret.
+
+### A WIF credential file is not a key
+
+The first attempt failed on this project's own guard, and the reason is worth keeping.
+
+`google-github-actions/auth` sets `GOOGLE_APPLICATION_CREDENTIALS` **under WIF as well**, so a guard that treats the variable's presence as proof of a key rejects the very mechanism it exists to prove. The file is an *external account credential configuration* — instructions for exchanging the runner's OIDC token — and contains no private key.
+
+The test that actually distinguishes them is the `type` field:
+
+| `type` | meaning |
+|---|---|
+| `external_account` | federation. Keyless. What we want |
+| `service_account` | a downloaded key. Fails |
+
+Both the workflow and the probe now inspect the file rather than the variable name, and additionally reject any file containing `private_key`.
+
+### The per-turn floor is smaller than measured locally
+
+3,768 input tokens for `"Say OK."` with `enabled_tools=[FINISH]`, against 4,470 measured locally with `[VIEW_FILE, FINISH]` and 10,889 with the default set. Consistent with the tool surface being the dominant term in the floor.
+
 ## Still open
 
 - **Q1 (CI half).** WIF token exchange inside a GitHub Actions runner. The SDK half is proven.

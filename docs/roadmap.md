@@ -10,7 +10,7 @@ Everything else assumes Workload Identity Federation → Application Default Cre
 
 Both published implementations authenticate with an API key secret, so **nobody has demonstrated the WIF path in CI**. The SDK side is supported (`vertex=True` with ADC, and the codelab's agent falls back to it), so this is wiring rather than research — but it is unproven, and everything else depends on it.
 
-- [ ] A workflow that authenticates via WIF and completes one trivial agent call on Vertex
+- [x] A workflow that authenticates via WIF and completes one trivial agent call on Vertex — **green, run 32270032966**
 - [x] Configure with explicit `vertex=True, project=, location=`. **`location` must be `global`** — `us-central1` returns a 404 for `gemini-3.7-flash`
 - [x] `Conversation.total_usage` is populated on Vertex, and reports `service_tier=STANDARD`
 - [x] Tool names verified against `0.1.12`. **But the model also reports `manage_task` and `schedule`** — undocumented, not in `BuiltinTools`, not removable via `enabled_tools`
@@ -118,7 +118,7 @@ Evidence for every closed row is in [`probe-results.md`](probe-results.md), repr
 
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit | **Half closed.** ADC authenticated from a non-interactive process on the first attempt. Only the WIF token exchange inside a runner is still unproven |
+| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit | ✅ **Closed — yes.** Green run 32270032966: keyless, `external_account` credential, 3,797 tokens billed on Vertex |
 | Q2 | Are the `BudgetConfig` dials per-dispatch or cumulative? | M3 | ✅ **Closed — all five are cumulative across the session.** Quoted from the source docstring in [`cost-tracking.md`](cost-tracking.md). A draft claimed otherwise and was wrong |
 | Q3 | Is `CapabilitiesConfig(enabled_tools=...)` exclusive or additive? | M1 | ✅ **Closed — explicit allowlist, mutually exclusive with `disabled_tools`.** The SDK's own docstring also endorses preferring it over `policy.deny()` |
 | Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | **Open.** One delegation reported 45k root prompt tokens — evidence of roll-up, no control run. Mooted by `enable_subagents=False` |
