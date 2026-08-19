@@ -101,28 +101,54 @@ ORDER BY usd DESC
 
 Caveat worth stating plainly: labels are only as good as their coverage. If any code path issues an unlabelled request, that spend silently leaves the report. The reconciliation check below is what catches it.
 
-## The budget guard
+## The budget: dollars on top of the SDK's tokens
 
-Measuring is not enough. A `pre_turn` hook checks accumulated cost before each turn:
+**The SDK already enforces budgets.** `BudgetConfig` caps a session declaratively:
+
+| field | caps |
+|---|---|
+| `max_model_calls` | model invocations |
+| `max_tool_calls` | tool invocations |
+| `max_input_tokens` | **net uncached** input (prompt minus cached), across the session |
+| `max_output_tokens` | output, including thoughts |
+| `max_total_tokens` | net uncached input + output |
+
+When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, and so on.
+
+**Do not write a hook for this.** An earlier draft of this document proposed a `pre_turn` hook computing cost and calling `stop()`. That was reinventing `BudgetConfig`, worse: it checks only between turns, it has no typed stop reason, and it would have to reimplement the net-uncached arithmetic the SDK already does correctly.
+
+**What is missing is the unit.** `BudgetConfig` counts tokens. People budget in money, and a token ceiling is not portable across models: 200k tokens is a different amount of money on Flash than on Pro, and it changes again when a promotional rate lapses. So this project's contribution is a translation layer:
 
 ```python
-async def budget_guard(ctx):
-    cost = price(ctx.conversation.total_usage, model)
-    if cost.total >= MAX_COST_USD:
-        await post_summary(
-            f"⚠️ Review stopped at the cost ceiling "
-            f"(${cost.total:.4f} of ${MAX_COST_USD:.2f}). "
-            f"Findings so far are below. Re-run with a higher ceiling for a full pass."
-        )
-        return ctx.stop()
+def budget_for(max_cost_usd: float, model: str, output_ratio: float = 0.05) -> BudgetConfig:
+    """Turn a dollar ceiling into the SDK's token limits.
+
+    output_ratio is the assumed share of spend going to output. It only has to be
+    roughly right: it splits one ceiling into two, and both are enforced.
+    """
+    rate = effective_rate_for(model)
+    return types.BudgetConfig(
+        max_input_tokens=int(max_cost_usd * (1 - output_ratio) / rate.input * 1e6),
+        max_output_tokens=int(max_cost_usd * output_ratio / rate.output * 1e6),
+        max_model_calls=MAX_CALLS,   # a second guard: a stuck loop is cheap per turn
+    )
 ```
 
-Design points:
+Two details make this honest rather than approximate:
 
-- **Stop, do not silently truncate.** The PR comment says the review was cut short. A partial review presented as complete is the same failure class as a silently truncated file.
-- **Findings already posted survive**, because they were emitted through tools as the agent worked rather than held to the end.
-- **A ceiling is per PR, not per turn.** Runaway loops are the thing being defended against, and they look normal one turn at a time.
-- **Default it generously and log the distribution.** Set too tight, it becomes a source of mysteriously incomplete reviews.
+**`max_input_tokens` counts net uncached input**, which is the cost-relevant quantity. A cheaper cached read does not consume the budget at the same rate as a fresh one, which is exactly right and is not something a naive token counter would get correct.
+
+**Cached reads still cost something**, so a session that stays under `max_input_tokens` entirely on cache hits will spend a little more than zero. The dollar ceiling is therefore a **near-bound, not a hard bound**, and is documented as such. The reported figure from Source 1 remains the accurate one.
+
+### Reporting the stop
+
+Whatever stops the run must be visible:
+
+- the PR comment names the reason in plain words, not the enum
+- `review-cost.json` records `stop_reason` verbatim
+- a stop is **not** a workflow failure. A partial review is a result, not an error
+
+A partial review presented as complete is the same failure class as a silently truncated file.
 
 ## Outputs
 
@@ -150,7 +176,7 @@ Cache rate is included because it is the single most actionable number: a low hi
   "cost_usd": 0.0412,
   "rate_applied": "introductory",
   "budget_usd": 0.50,
-  "stopped_on_budget": false,
+  "stop_reason": null,
   "caveats": ["cache storage is billed per token-hour and is not included"]
 }
 ```

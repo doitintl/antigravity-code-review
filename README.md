@@ -24,7 +24,7 @@ The trade-off is real and is not hidden here: pulling means many model calls, so
 
 **You will know what every review cost.** Each run reports input, cached, output and reasoning tokens separately, prices them, and writes a machine-readable artifact. Costs roll up per PR, per repository, and per month.
 
-**You can cap it.** A pre-turn hook checks cumulative spend before each step and stops the run when it exceeds the configured ceiling, posting what it has so far. A budget you can only observe is not a budget.
+**You can cap it in dollars.** The SDK enforces budgets in *tokens*; this translates a `max_cost_usd` ceiling into those limits, so the number you set is the number you care about. A budget you can only observe is not a budget.
 
 **No API keys.** Authentication uses Workload Identity Federation to Vertex AI, so there is no long-lived credential in any repository secret, and inference is billed to the Google Cloud project you point it at.
 
@@ -61,7 +61,7 @@ config = LocalAgentConfig(
         policy.allow(github_mcp),        # posts the review
     ],
     skills_paths=["./.github/review-skills"],
-    hooks=[budget_guard],                # stops the run at the cost ceiling
+    budget_config=budget_for(max_cost_usd=0.50, model=MODEL),
 )
 ```
 
@@ -84,9 +84,9 @@ Also relevant:
 - [`derailed-dash/gemini-review-action`](https://github.com/derailed-dash/gemini-review-action) — a push-context reviewer on Gemini. Cheap and effective on ordinary PRs.
 - [`google-github-actions/run-gemini-cli`](https://github.com/google-github-actions/run-gemini-cli) — official Google action wrapping the Gemini CLI, with a PR-review workflow.
 
-**What is actually new here is narrow: the money.** Neither Antigravity reviewer tracks cost. `run-agy-sdk` declares a `stats` output for "token expenditures" and ships `f.write("stats={}\n")  # placeholder`; the codelab does not raise the subject. Both authenticate with an API key secret rather than Workload Identity Federation.
+**What is actually new here is narrow: the money.** The SDK already gives you token usage (`Conversation.total_usage`), budget limits (`BudgetConfig`), tracing, skills and policies. Neither published reviewer converts any of it into currency. `run-agy-sdk` declares a `stats` output for "token expenditures" and ships `f.write("stats={}\n")  # placeholder`; the codelab does not raise the subject. Both authenticate with an API key secret rather than Workload Identity Federation.
 
-So this project contributes per-PR cost reporting, an enforceable per-PR ceiling, WIF so spend attributes to a project by construction, and reconciliation against the billing export. The reviewing itself is borrowed, with thanks.
+So this contributes four things: **pricing** (a rate table that gets cached input and reasoning tokens right), a **dollar-denominated ceiling** on top of the SDK's token limits, **WIF** so spend attributes to a project by construction, and **reconciliation** against the billing export. The reviewing, the enforcement and the accounting are all borrowed, with thanks.
 
 **If per-PR cost visibility does not matter to you, use one of those instead.** They work today and are simpler.
 

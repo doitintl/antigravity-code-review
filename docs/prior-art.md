@@ -37,16 +37,33 @@ Where this project differs:
 - Its **workflow** still uses an API key secret, and posts results by writing `code_review.md` and having `actions/github-script` create a comment. So the ADC path exists in the agent but is exercised nowhere in CI.
 - **No token or cost tracking of any kind.**
 
+## The SDK's own `examples/` tree
+
+Read this before writing anything. A search of public GitHub finds essentially no third-party SDK usage beyond the two reviewers above, but the SDK ships 25 runnable examples that cover more than either of them uses.
+
+Directly relevant:
+
+- **`budget_limits.py`** — `BudgetConfig` caps model calls, tool calls, and net uncached input / output / total tokens, stopping the session with a typed `StopReason`. **This removes the need for a custom budget hook**, which an earlier draft of this project proposed.
+- **`observability.py`** — reads `conversation.total_usage` and prints prompt, output and thinking tokens. The usage primitive is demonstrated, just never priced.
+- **`observability_otel.py`** — OpenTelemetry tracing via `google.antigravity.utils.otel`, including subagents. A better substrate for run analysis than bespoke logging.
+- **`agent_skills.py`** — `skills_paths` in practice. Notably it prompts the agent with *"What available skills do you have?"*, which reads as **discovery rather than unconditional injection**.
+- **`policies.py`**, **`hooks.py`**, **`human_in_the_loop.py`** — the safety model.
+- **`structured_output.py`**, **`custom_tools.py`**, **`mcp_tools.py`**, **`subagents.py`**, **`slash_commands.py`**, **`persona_config.py`**, **`triggers.py`**.
+
+There is also an official `skills/google-antigravity-sdk/` skill in the repository, with `references/safety_policies.md` among others — worth loading into any agent working on this project.
+
 ## What this project adds
 
 Neither example measures what a review costs. One advertises the capability and ships a placeholder; the other does not raise the subject. So the contribution here is narrow and specific:
 
-1. **Per-PR cost reporting**, from `Conversation.total_usage`, pricing cached input and reasoning tokens correctly rather than ignoring them.
-2. **An enforceable per-PR ceiling**, via a pre-turn hook that stops the run rather than merely reporting afterwards.
-3. **Workload Identity Federation in CI**, so there is no API key anywhere and spend attributes to a project by construction.
+1. **Money.** Nothing in the SDK or either reviewer converts tokens into currency. There is no rate table, no dollar figure, and no dollar-denominated ceiling. Pricing it correctly is not trivial: cached input bills at a fraction rather than free, reasoning tokens bill at the output rate, and introductory rates expire.
+2. **A dollar ceiling**, by translating `max_cost_usd` into `BudgetConfig`'s token limits. The enforcement is the SDK's; the unit conversion is ours. A token budget is not portable across models, and money is what people actually budget in.
+3. **Workload Identity Federation in CI**, so there is no API key anywhere and spend attributes to a project by construction. Both reviewers use an API key secret.
 4. **Reconciliation** against the Cloud Billing export, so the reported figure is checked rather than trusted.
 
-Everything else — the policy model, the MCP posting path, skills for repository rules, hooks as a second layer — is borrowed, with thanks.
+Everything else — the policy model, the MCP posting path, skills, hooks, budget enforcement, usage accounting, tracing — is borrowed, with thanks.
+
+**This list has shrunk twice**, both times from reading source rather than documentation. That is the right direction for it to move.
 
 ## A note on the honest conclusion
 

@@ -46,7 +46,7 @@ Antigravity Agent (Vertex, read-only policy)
       │
       ├── view_file / find_file / search_directory   ← the agent decides
       ├── github MCP server (allowlisted tools)      ← posts the review
-      └── budget_guard hook                          ← pre-turn cost check
+      └── BudgetConfig (SDK-native)                  ← caps calls and tokens
       │
       ▼
    PR review posted   +   review-cost.json artifact
@@ -94,13 +94,15 @@ github_mcp = types.McpStdioServer(
 
 This is what `run-agy-sdk` does. It removes any need to write GitHub API code, and `enabled_tools` is itself a security boundary.
 
-**Budget guard.** A pre-turn hook, described in [`cost-tracking.md`](cost-tracking.md).
+**Budget limits.** The SDK provides these natively via `BudgetConfig`; this project translates a *dollar* ceiling into those token limits. See [`cost-tracking.md`](cost-tracking.md).
 
-### Where reporting and the budget guard conflict
+### Where reporting and the budget limit conflict
 
-A single structured response only exists at the end, so a run stopped at its cost ceiling produces **nothing at all**. Incremental posting through MCP survives a stop, but is harder to validate and can leave a half-finished review on the PR.
+A single structured response only exists at the end, so a run stopped by a budget limit produces **nothing at all**. Incremental posting through MCP survives a stop, but is harder to validate and can leave a half-finished review on the PR.
 
-**Leaning:** MCP with incremental posting, plus a stop message that makes the partial state explicit. To be settled with evidence in M1 rather than by preference. If structured output wins instead, the budget guard must post an explicit "stopped, no findings" comment rather than failing silently.
+This is not hypothetical: `BudgetConfig` stops the session and reports a `StopReason`, so the run genuinely ends mid-review.
+
+**Leaning:** MCP with incremental posting, plus a message naming the `StopReason`. To be settled with evidence in M1 rather than by preference. If structured output wins instead, the runner must post an explicit "stopped, no findings" comment rather than failing silently.
 
 ## Guardrails carried over from the push-based design
 
@@ -125,7 +127,15 @@ Reviewers are far more useful when they know a repository's own invariants.
 
 The SDK supports this directly through **Agent Skills**, via `skills_paths` on the config — the mechanism the Google codelab uses to supply its `code-review-and-quality` skill. Use that rather than inventing a parallel convention.
 
-One caveat, learned from watching a similar mechanism in production: **if repository rules are reachable only through a discovery tool the agent may choose to call, it will often not call it.** The review then reflects generic knowledge while appearing to be repo-aware, which is worse than having no rules at all, because nobody can tell from the output. Whether `skills_paths` injects unconditionally or is discovered on demand decides this, and it is an explicit M4 check. Anything that must always apply belongs in `system_instructions`.
+One caveat, learned from watching a similar mechanism in production: **if repository rules are reachable only through a discovery step the agent may skip, it will often skip them.** The review then reflects generic knowledge while appearing to be repo-aware, which is worse than having no rules at all, because nobody can tell from the output.
+
+The SDK's own skills example prompts the agent with *"What available skills do you have?"* — which reads as **discovery rather than unconditional injection**. If that holds, anything that must always apply belongs in `system_instructions`, and `skills_paths` carries the deep reference material the agent consults when it decides it needs it. M4 verifies this against a run log rather than assuming it.
+
+## Telemetry
+
+The SDK ships OpenTelemetry support (`google.antigravity.utils.otel`), so spans can be exported to Cloud Trace rather than invented here. That is the right substrate for "why was this review slow" and "which tool dominated", and it means per-run analysis is a query rather than a bespoke logging layer.
+
+Cost still has to be layered on top, because a span carries tokens and not money.
 
 ## Non-determinism and evaluation
 
@@ -147,7 +157,7 @@ This is scheduled early ([`roadmap.md`](roadmap.md), M5) rather than late, becau
 These are unresolved and are called out rather than assumed.
 
 1. **Headless authentication in CI via WIF.** The SDK supports `vertex=True` with ADC, and the codelab's agent falls back to it when no API key is set. But **both published examples authenticate their workflow with an API key secret**, so the WIF path inside a GitHub Actions runner is demonstrated nowhere. Still M0's first task, though a smaller risk than it looked: the SDK side is supported, only the CI wiring is unproven.
-2. **Whether `skills_paths` injects unconditionally or is discovered on demand.** Decides whether repository rules reliably reach the model. See "Repository rules" above.
+2. **How much of a skill reaches the model unprompted.** The SDK's own example asks the agent *"What available skills do you have?"*, which reads as discovery rather than unconditional injection. Needs confirming against a run log, not inferred. See "Repository rules" above.
 3. **Cost versus a single-shot reviewer**, measured rather than assumed. Plausibly several times higher per review. Whether the extra findings justify it is an empirical question, and the answer may be "only on larger PRs".
 4. **Latency.** Multi-turn agents are slower. If a review lands after a human has already merged, it buys nothing — which is the single most common way an AI reviewer becomes shelfware.
 5. **Context caching.** Whether the SDK exposes explicit caching, and whether a stable system-instruction prefix makes it worthwhile.

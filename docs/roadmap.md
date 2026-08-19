@@ -14,6 +14,7 @@ Both published implementations authenticate with an API key secret, so **nobody 
 - [ ] Confirm the SDK picks up ADC with `GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`
 - [ ] Confirm `Conversation.total_usage` is populated on a **Vertex** run, not only on an API-key run
 - [ ] Re-verify the tool names against the installed version rather than trusting the examples
+- [ ] Run the SDK's own `budget_limits.py` and `observability.py` on Vertex, since both are load-bearing here
 - [ ] Note the wheel's platform requirements for `ubuntu-latest`
 
 **Exit:** a green workflow printing a token count. If ADC does not work headlessly, stop and reconsider before building anything on top.
@@ -43,14 +44,17 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 
 **Exit:** every review reports its cost, and the same figure can be found in the billing export.
 
-## M3 — Budget enforcement
+## M3 — A dollar ceiling
 
-- [ ] `pre_turn` hook checking accumulated cost
-- [ ] `max_cost_usd` input; stop and post partial findings on breach
-- [ ] Make the stop visible in both the comment and the artifact
-- [ ] A turn ceiling as a second guard, since a stuck loop can be cheap per turn
+Enforcement is the SDK's job. This milestone is the unit conversion and the reporting around it.
 
-**Exit:** a deliberately pathological PR stops at its ceiling instead of running on.
+- [ ] `max_cost_usd` input, translated into `BudgetConfig` token limits via the rate table
+- [ ] `max_model_calls` as a second guard, since a stuck loop is cheap per turn and still unbounded
+- [ ] Surface `StopReason` in the PR comment, in plain words, and verbatim in the artifact
+- [ ] A budget stop is **not** a workflow failure
+- [ ] Document that the ceiling is a near-bound: cached reads still cost a little while consuming no `max_input_tokens`
+
+**Exit:** a deliberately pathological PR stops at its ceiling, says why, and still posts what it found.
 
 ## M4 — Repository rules
 
@@ -93,7 +97,7 @@ Deliberately not last. Without it, every quality claim is an anecdote, and there
 | Risk | Why it matters | Mitigation |
 |---|---|---|
 | ADC does not work headlessly | Blocks everything | M0 is exactly this |
-| Cost per review is several times a single-shot reviewer | May not be justifiable | Measure in M5; cap in M3 |
+| Cost per review is several times a single-shot reviewer | May not be justifiable | Measure in M5; cap via BudgetConfig in M3 |
 | Latency exceeds time-to-merge | A review after the merge buys nothing | Measure wall-clock in M5; treat it as a first-class metric |
 | Compiled binary in the wheel | Weaker audit story than pure source | Pin versions; state it plainly |
 | Non-determinism | Regressions land unnoticed | M5 |
