@@ -47,6 +47,20 @@ cost = (
 )
 ```
 
+### Two traps the SDK documents and it would be easy to miss
+
+🔴 **A failed run reports zero tokens.** The SDK's observability guide states plainly that if agent execution fails — a bad key, a backend error — usage counts *"may be reported as 0"*. So the failure mode of this cost tracker is **silently reporting $0.00 for a run that consumed real tokens before dying**, which understates spend in exactly the situation where someone is investigating a spike. Treat a zero-token completed run as **suspect, not free**: record it as `null` with a reason rather than `0.0`, and let reconciliation against billing be the arbiter.
+
+⚠️ **Thinking tokens move the total unpredictably.** Also from the SDK's own guide: they *"can significantly increase the total count unexpectedly"*. They bill at the output rate and are reported separately, so any estimate that sums only prompt and candidates will be wrong, and wrong in the direction that flatters the tool.
+
+### The model has to be pinned, and that is a deliberate exception
+
+The SDK's configuration guidance is explicit: *"Avoid setting the model explicitly unless requested. It is generally better to leave the model unset to use the default behavior."*
+
+**This project sets it anyway, and the reason is this document.** Pricing requires knowing the rate, the rate depends on the model, and **the SDK does not report which model actually served a request** — `UsageMetadata` carries token counts and a service tier, not a model identifier. Leave the model unset and you get tokens you cannot price.
+
+So the model is pinned, recorded in `review-cost.json` alongside the figure, and treated as part of the cost contract rather than a tuning knob. Where the identifier itself comes from matters too: the same guidance says never to guess model names or assume they follow a pattern, so the rate table's keys are copied from published pricing rather than inferred.
+
 ### The rate table
 
 Rates are data, not comments, and carry an expiry:

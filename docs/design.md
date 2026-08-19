@@ -56,20 +56,33 @@ Antigravity Agent (Vertex, read-only policy)
 
 **Collector.** Reads the PR from the GitHub API and produces the prompt seed: title, body, base and head refs, and one line per changed file (`path`, change type, `+adds/-dels`, blob SHA). **No file contents and no diff hunks.** Keeping the diff out is what stops a large file from mattering; the agent fetches hunks through a tool when it wants them.
 
-**Agent.** An `Agent` from the SDK, configured with `vertex=True` and ADC. Read-only by policy, using the tool names the SDK actually exposes:
+**Agent.** An `Agent` from the SDK, configured with `vertex=True` and ADC, denying everything and naming what it needs:
 
 ```python
 review_policies = [
     policy.deny_all(),
-    policy.allow("view_file"),
-    policy.allow("list_directory"),
-    policy.allow("search_directory"),
-    policy.allow("find_file"),
-    policy.allow("finish"),
+    policy.allow(BuiltinTools.VIEW_FILE),
+    policy.allow(BuiltinTools.LIST_DIR),
+    policy.allow(BuiltinTools.SEARCH_DIR),
+    policy.allow(BuiltinTools.FIND_FILE),
+    policy.allow(BuiltinTools.FINISH),
+    policy.allow(github_mcp),
 ]
 ```
 
-The SDK's `Agent` is read-only by default; the explicit deny-all-then-allow is belt and braces, and it is auditable in a way a default is not.
+🔴 **Do not rely on the default being read-only. It is not.** `LocalAgentConfig` defaults to `policy.confirm_run_command()`, which denies `run_command` and **allows every other tool, including `create_file` and `edit_file`**. An earlier draft of this document claimed the SDK is read-only by default and was wrong. For a tool that reads pull requests from untrusted contributors, write access acquired by inheriting a default is exactly the kind of thing nobody notices until it matters.
+
+Three details that decide whether the block above actually does what it looks like it does:
+
+**Policy resolution is priority-based, not order-based.** Nine levels: a *specific* deny (1) beats a *specific* allow (3), which beats a *prefix wildcard* allow (6), which beats a *global wildcard* deny (7). So `deny_all()` sets the floor and the named allows sit above it. First match wins only *within* a priority level.
+
+**MCP servers are a prefix wildcard**, priority 6, so `policy.allow(github_mcp)` also outranks `deny_all()`. Constrain the server further with an `enabled_tools` list rather than relying on the policy alone.
+
+**Use the `BuiltinTools` enum, not strings.** A typo in a string silently produces a policy that matches nothing. Worth noting the SDK's own safety documentation contains an example allowing `code_search`, which is not in its list of built-in tools — a reminder to check names against `built_in_tools.md` rather than copying samples.
+
+**`workspaces` earns its keep.** Setting it auto-applies `policy.workspace_only()`, restricting `view_file`, `create_file` and `edit_file` to those directories. Set it even though writes are already denied: defence in depth costs one line.
+
+**Predicates fail closed.** If a `when=` predicate raises, the SDK treats it as a *match* and applies that policy's decision. Fine for a deny, dangerous for an allow, so keep predicates on denies.
 
 **A second enforcement layer.** Policies gate *which* tools may run, not *what arguments* they may run with. If `run_command` is ever allowed, a hook must constrain it — the pattern in both reference implementations is to reject anything that is not a `git` invocation. For a reviewer, prefer not allowing it at all.
 

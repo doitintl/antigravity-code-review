@@ -28,7 +28,7 @@ The trade-off is real and is not hidden here: pulling means many model calls, so
 
 **No API keys.** Authentication uses Workload Identity Federation to Vertex AI, so there is no long-lived credential in any repository secret, and inference is billed to the Google Cloud project you point it at.
 
-**Read-only by default.** The agent is configured with an explicit tool allowlist. It can read the repository and post review comments. It cannot write files or run shell commands.
+**Read-only by construction, not by default.** The SDK's default policy denies `run_command` and **allows everything else, including `create_file` and `edit_file`**. A reviewer must therefore deny explicitly rather than inherit safety. This one starts from `deny_all()` and names the handful of tools it needs.
 
 ## How it will work
 
@@ -43,29 +43,31 @@ The trade-off is real and is not hidden here: pulling means many model calls, so
 Roughly, in the agent process:
 
 ```python
-from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
+from google.antigravity import Agent, LocalAgentConfig
 from google.antigravity.hooks import policy
+from google.antigravity.types import BuiltinTools
 
 config = LocalAgentConfig(
     vertex=True,
     project=os.environ["GOOGLE_CLOUD_PROJECT"],
     location=os.environ["GOOGLE_CLOUD_LOCATION"],
     system_instructions=REVIEWER_INSTRUCTIONS,
-    capabilities=CapabilitiesConfig(),
+    workspaces=[os.getcwd()],            # auto-applies policy.workspace_only()
     policies=[
-        policy.deny_all(),               # nothing unless named below
-        policy.allow("view_file"),
-        policy.allow("list_directory"),
-        policy.allow("search_directory"),
-        policy.allow("find_file"),
-        policy.allow(github_mcp),        # posts the review
+        policy.deny_all(),                          # nothing unless named below
+        policy.allow(BuiltinTools.VIEW_FILE),
+        policy.allow(BuiltinTools.LIST_DIR),
+        policy.allow(BuiltinTools.SEARCH_DIR),
+        policy.allow(BuiltinTools.FIND_FILE),
+        policy.allow(BuiltinTools.FINISH),
+        policy.allow(github_mcp),                   # posts the review
     ],
     skills_paths=["./.github/review-skills"],
     budget_config=budget_for(max_cost_usd=0.50, model=MODEL),
 )
 ```
 
-Tool names are the ones the SDK exposes, taken from the two published implementations (see [`docs/prior-art.md`](docs/prior-art.md)) and re-verified in M0.
+`deny_all()` first looks like it should block everything. It does not: policy resolution is **priority-based, not order-based**, and a *specific* allow (priority 3) outranks a *global wildcard* deny (priority 7). The allowlist wins, which is the intended reading and worth knowing before anyone "fixes" it.
 
 ## Cost model in one paragraph
 

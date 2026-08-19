@@ -15,6 +15,7 @@ Both published implementations authenticate with an API key secret, so **nobody 
 - [ ] Confirm `Conversation.total_usage` is populated on a **Vertex** run, not only on an API-key run
 - [ ] Re-verify the tool names against the installed version rather than trusting the examples
 - [ ] Run the SDK's own `budget_limits.py` and `observability.py` on Vertex, since both are load-bearing here
+- [ ] Confirm whether a failed run really reports zero tokens, and how a partial failure presents
 - [ ] Note the wheel's platform requirements for `ubuntu-latest`
 
 **Exit:** a green workflow printing a token count. If ADC does not work headlessly, stop and reconsider before building anything on top.
@@ -24,7 +25,8 @@ Both published implementations authenticate with an API key secret, so **nobody 
 Most of this exists in the prior art and should be adopted rather than rewritten.
 
 - [ ] Collector: PR metadata and changed-file list, **no file bodies, no diff hunks**
-- [ ] Read-only policy: `policy.deny_all()`, then allow `view_file`, `list_directory`, `search_directory`, `find_file`
+- [ ] Read-only policy: `policy.deny_all()`, then allow the needed `BuiltinTools` members. **Verify `create_file` / `edit_file` are actually refused at runtime** rather than assumed — the SDK default allows them
+- [ ] Set `workspaces` so `policy.workspace_only()` is auto-applied
 - [ ] `view_file` byte cap with a loud truncation marker (the one thing the prior art does not do)
 - [ ] GitHub MCP server with a pinned image and an `enabled_tools` allowlist
 - [ ] Decide reporting: incremental MCP posting vs `response_schema`, on evidence — see the conflict with the budget guard in [`design.md`](design.md)
@@ -103,4 +105,6 @@ Deliberately not last. Without it, every quality claim is an anecdote, and there
 | Non-determinism | Regressions land unnoticed | M5 |
 | Prompt injection from PR content | The agent reads attacker-controllable text by design | System instruction plus an evaluation fixture |
 | The SDK is new and moving | API churn | Pin; keep the surface used small |
+| A failed run reports 0 tokens | Cost tracking silently under-reports exactly when someone is investigating | Record zero-token runs as `null` with a reason; reconcile against billing |
+| Write tools are allowed by the SDK default | A reviewer could modify the repository it is reviewing | `deny_all()` plus `workspaces`; assert it in M1 rather than trusting it |
 | Two published reviewers already exist | This project may not be worth building | Its scope is deliberately narrow — cost tracking and enforcement. If that turns out not to matter, use the prior art and archive this |

@@ -52,6 +52,12 @@ Directly relevant:
 
 There is also an official `skills/google-antigravity-sdk/` skill in the repository, with `references/safety_policies.md` among others — worth loading into any agent working on this project.
 
+## The official `google-antigravity-sdk` agent skill
+
+Ships with the SDK (`skills/google-antigravity-sdk/`) and is also distributable as an agent skill. Load it before writing code. Its `references/` are more precise than the README, and in one case they **contradict** it: the README says the `Agent` runs *"in read-only mode by default"*, while `references/built_in_tools.md` says all built-in tools are enabled by default and only `run_command` is denied. The reference is the one to trust for a security decision, and the disagreement is itself the argument for never inheriting a default for a safety property.
+
+Most useful pages: `safety_policies.md` (the nine-level priority model), `built_in_tools.md` (canonical tool names and default state), `observability.md` (usage tracking, and the warning that failed runs may report zero tokens), `agent_configuration.md` (the rule against assuming model identifiers).
+
 ## What this project adds
 
 Neither example measures what a review costs. One advertises the capability and ships a placeholder; the other does not raise the subject. So the contribution here is narrow and specific:
