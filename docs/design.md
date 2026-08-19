@@ -75,11 +75,11 @@ config = LocalAgentConfig(
     # Layer 2 — policy: deny-by-default over whatever survived layer 1
     policies=[
         policy.deny_all(),
-        policy.allow("view_file"),
-        policy.allow("list_directory"),
-        policy.allow("search_directory"),
-        policy.allow("find_file"),
-        policy.allow("finish"),
+        policy.allow(types.BuiltinTools.VIEW_FILE),
+        policy.allow(types.BuiltinTools.LIST_DIR),
+        policy.allow(types.BuiltinTools.SEARCH_DIR),
+        policy.allow(types.BuiltinTools.FIND_FILE),
+        policy.allow(types.BuiltinTools.FINISH),
         policy.allow(github_mcp, GITHUB_TOOLS),
     ],
     workspaces=[os.getcwd()],
@@ -98,9 +98,21 @@ An earlier draft used policies alone. Policies decide what a tool call *does whe
 
 **It removes one place to be wrong.** Getting the priority table below right is a prerequisite for the policy layer holding. Nothing has to be right for a tool that was never registered.
 
-Two caveats, both for M0. The SDK's documentation disagrees with itself on whether `enabled_tools` is an exclusive allowlist or an additive opt-in: `built_in_tools.md` says all built-in tools are enabled by default, while `web_tools.md` says `SEARCH_WEB` must be explicitly enabled. The evidence favours *exclusive* — the web-tools example has to re-list `VIEW_FILE` alongside `READ_URL_CONTENT`, which would be redundant under an additive reading. But it is evidence, not documentation, so **verify the behaviour before treating layer 1 as a boundary**, and keep layer 2 regardless.
+This is not a reading of the documentation — it is the SDK's own guidance, and it makes the same argument in the same terms. From the `CapabilitiesConfig` docstring in `0.1.12`:
 
-And `enable_subagents` **defaults to true**. That is worth an explicit `False` here on cost grounds alone: a subagent is a second conversation, and whether its tokens roll into `Conversation.total_usage` or count against `BudgetConfig` is undocumented. An uncounted spender is precisely the thing this project claims to have eliminated.
+> `enabled_tools` / `disabled_tools` control which tools the harness *exposes* to the model. A disabled tool is stripped from the model's context entirely — the model never sees it, never wastes tokens considering it, and never attempts to call it. […] By contrast, the policy system leaves a tool visible in the model's context but rejects the call at runtime. […] This costs tokens and may cause retries.
+>
+> **Guideline**: Prefer `disabled_tools` / `enabled_tools` for tools the agent should never use. Use `policy.deny()` for conditional or context-dependent restrictions.
+
+`enabled_tools` is an **explicit allowlist, mutually exclusive with `disabled_tools`**; when both are `None` the harness default is all tools enabled. A reviewer's tool set is fixed and unconditional, which is exactly the case the guideline assigns to layer 1. Note the docstring names retries as a cost of the policy-only approach — a denied call can be re-attempted, so the waste is not bounded at one turn.
+
+And `enable_subagents` **defaults to true**. That is worth an explicit `False` here on cost grounds alone: a subagent is a second conversation, and whether its tokens roll into `Conversation.total_usage` or count against `BudgetConfig` is still unverified. An uncounted spender is precisely the thing this project claims to have eliminated.
+
+### Two levers the plan had not found
+
+**`compaction_threshold`** on `CapabilitiesConfig` bounds how large the context grows before the harness compacts it. Compaction is both a billed call and a cache-prefix invalidation, so this is the one dial that trades those two costs against each other directly, and it is the only thing resembling a per-turn size guard in the SDK.
+
+**`thinking_level`** on `GeminiModelOptions` — `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`, `EXTRA_HIGH`. Thinking tokens bill at the **output** rate, and [`cost-tracking.md`](cost-tracking.md) already flags them as the term that moves a total unpredictably. That makes this the single largest cost lever in the configuration, and the plan had treated reasoning spend as weather rather than as a setting. It is also the obvious first axis for M5 to measure: the cheapest defensible reviewer is whichever thinking level stops finding defects.
 
 ### The policy layer, precisely
 
@@ -110,7 +122,7 @@ Three details decide whether the policy block does what it looks like it does:
 
 **Name the MCP tools, do not pass the bare server.** `policy.allow(github_mcp)` is a *prefix wildcard* allow at priority 6; `policy.allow(github_mcp, [...])` with an explicit list is a *specific* allow at priority 3. Both outrank `deny_all()`, so both "work" — but the list form raises the priority, states the intent in the policy rather than only in the server config, and gives the same allowlist two places to be enforced. Pass the list, and keep `enabled_tools` on the server as well.
 
-**Tool names are strings, and the strings are not the enum names.** `BuiltinTools.LIST_DIR` is `list_directory`, `SEARCH_DIR` is `search_directory`. The SDK's policy examples take strings; whether `policy.allow()` also accepts a `BuiltinTools` member is not documented, so pass the enum where it is documented (`enabled_tools`) and strings where it is documented (`policy.*`), and check both against `built_in_tools.md` at the pinned version. That the SDK's own safety documentation contains an example allowing `code_search` — which is not a built-in tool at all — is the argument for checking rather than copying.
+**The `BuiltinTools` enum is safe to pass to `policy.allow()`.** Its signature annotates `tool: str | BaseMcpServerConfig`, but `BuiltinTools` subclasses `str`, so `policy.allow(BuiltinTools.VIEW_FILE)` constructs the same policy a string would and is checked at import time instead of at runtime. Prefer it: `LIST_DIR` is `list_directory` and `SEARCH_DIR` is `search_directory`, so the hand-written strings are the error-prone half. That the SDK's own safety documentation contains an example allowing `code_search` — which is not a built-in tool at all — is the argument for letting the enum do the checking.
 
 **`workspaces` earns its keep.** Setting it auto-applies `policy.workspace_only()`, restricting `view_file`, `create_file` and `edit_file` to those directories. Set it even though writes are already denied twice: defence in depth costs one line.
 
@@ -165,7 +177,7 @@ Some hard-won limits still apply, because the failure mode moves rather than dis
 
 That is more work than a config flag, and the plan should carry the real cost: the override reimplements the whole tool, not just the cap, so it must match the built-in's parameter contract exactly — note the SDK's own override example takes `AbsolutePath`, not `path` — and it must reimplement ranged reads rather than inheriting them. Confirm the real signature against the pinned version in M0; the alternative is an agent whose file reads silently stop working.
 
-There is a second guard that costs nothing and needs no override: `BudgetConfig(max_input_tokens=...)` is evaluated **before each dispatch**, so it refuses an oversized prompt outright. It does not replace truncation — by then the file is already in the request — but it is the backstop for whatever the cap fails to catch.
+**There is no second guard.** Every `BudgetConfig` dial is a session total, so none of them refuses a single oversized prompt — a 900k-token turn is permitted right up until the cumulative ceiling trips, and by then it has been paid for. The only other lever is `CapabilitiesConfig(compaction_threshold=...)`, which bounds how large the context grows before the harness compacts it. So the byte cap is not defence in depth here; it is the defence.
 
 Whatever does the truncating must say so in the returned text:
 

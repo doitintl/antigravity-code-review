@@ -21,7 +21,8 @@ Both published implementations authenticate with an API key secret, so **nobody 
 - [ ] Confirm whether retries — 2 API, 4 model-output by default — count against `max_model_calls` and appear in usage
 - [ ] Confirm the built-in `view_file` parameter contract (the override example takes `AbsolutePath`) and whether it supports ranged reads
 - [ ] Confirm whether a failed run really reports zero tokens, and how a partial failure presents
-- [ ] Note the wheel's platform requirements for `ubuntu-latest`
+- [ ] **Find the SDK surface for attaching billing labels to generation requests** — see Q11, the one open question that can invalidate a design rather than adjust it
+- [x] Wheel platform requirements — `0.1.12` publishes `manylinux_2_17_x86_64`, so `ubuntu-latest` is fine; `macosx_11_0_arm64` means the probe runs locally; Python ≥3.10. At 32–38 MB per wheel, the compiled-runtime supply-chain note is confirmed rather than suspected
 
 If ADC does not work headlessly, the documented fallback is Vertex Express Mode (`vertex=True, api_key=...`) — spend stays attributable to a project, at the cost of a key.
 
@@ -55,7 +56,7 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 - [ ] Tighten `ModelOutputRetryConfig(max_retries=...)` and record retry counts — the default is 4 re-prompts at full context
 - [ ] Cost line in the PR comment
 - [ ] `review-cost.json` artifact
-- [ ] Vertex billing labels, sanitised, failing open
+- [ ] Vertex billing labels, sanitised, failing open — **contingent on Q11**; if the SDK exposes no label surface, drop Source 2 to project-level attribution and say so plainly rather than shipping a breakdown that is always empty
 
 **Exit:** every review reports its cost, and the same figure can be found in the billing export.
 
@@ -100,6 +101,32 @@ Deliberately not last. Without it, every quality claim is an anecdote, and there
 - [ ] Documented inputs and required IAM
 - [ ] Worked WIF setup example
 - [ ] Versioned tags and a changelog
+
+## Open questions register
+
+Every unresolved question in this plan, in one place, because a question buried in a paragraph is a question nobody closes. **A milestone is not startable while a question marked as blocking it is open.**
+
+Status as of the `0.1.12` introspection pass on 2026-08-19. **Closed** means answered from the installed package or published source, not inferred.
+
+| # | Question | Blocks | Status |
+|---|---|---|---|
+| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit, everything | **Open.** The only question that needs CI rather than a laptop |
+| Q2 | Are the `BudgetConfig` dials per-dispatch or cumulative? | M3 | ✅ **Closed — all five are cumulative across the session.** Quoted from the source docstring in [`cost-tracking.md`](cost-tracking.md). A draft claimed otherwise and was wrong |
+| Q3 | Is `CapabilitiesConfig(enabled_tools=...)` exclusive or additive? | M1 | ✅ **Closed — explicit allowlist, mutually exclusive with `disabled_tools`.** The SDK's own docstring also endorses preferring it over `policy.deny()` |
+| Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | **Open.** Needs a live run. Mooted in practice by `enable_subagents=False` |
+| Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | **Open.** Needs a live run |
+| Q6 | What is the built-in `view_file` parameter contract? | M1 | **Open.** Needs a live session to introspect the registered tool schema |
+| Q7 | Does a failed run really report zero tokens? | M2 | **Open.** Needs a live run with bad credentials |
+| Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | **Open.** Needs a live run against a scratch PR |
+| Q9 | Does `skills_paths` inject frontmatter unconditionally? | M4 | **Open.** Needs a live run plus a log |
+| Q10 | Do Vertex rates match the AI Studio rates the table cites? Priority and flex tiers? | M2 exit | **Open.** Fetch attempted 2026-08-19, page truncated. Note `ServiceTier` has three members — `STANDARD`, `PRIORITY`, `FLEX` — so there are three rate columns to source, not two |
+| Q11 | **Any SDK surface for per-request billing labels?** | M2 Source 2 | ✅ **Closed — no.** No `labels` field on `LocalAgentConfig` (25 fields), none on `GeminiModelOptions` (`thinking_level`, `service_tier` only), and no label/tag field anywhere in `types`. **Source 2 is not implementable as designed** |
+| Q12 | Which single-shot reviewer is the baseline, on which fixtures? | M5 | A decision, not a discovery. Make it when M5 starts |
+| Q13 | Incremental MCP posting, `response_schema`, or `finish_tool_schema_json`? | M1 exit | Downstream of Q8. Note introspection found a **third** option the plan had not considered: `CapabilitiesConfig.finish_tool_schema_json` constrains the `finish` tool's own schema |
+
+**Q11 invalidates a design rather than adjusting one.** Per-PR attribution in Cloud Billing is not reachable, so reconciliation drops to project-level. That removes one of the four contributions [`prior-art.md`](prior-art.md) claims, and the README has been corrected rather than left to imply otherwise. One escape remains worth a probe: `VertexEndpoint` is exported and takes an `options` object, so labels may be reachable a layer below the config.
+
+Q1 needs CI. **Q4–Q9 are one script against the laptop's existing ADC.** Q2, Q3 and Q11 are already answered and needed no billed call at all — which is the argument for introspecting an installed package before designing against its documentation.
 
 ## Explicitly out of scope for v1
 

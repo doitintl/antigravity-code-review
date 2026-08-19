@@ -67,11 +67,11 @@ config = LocalAgentConfig(
     # Layer 2: deny-by-default over whatever survived layer 1
     policies=[
         policy.deny_all(),
-        policy.allow("view_file"),
-        policy.allow("list_directory"),
-        policy.allow("search_directory"),
-        policy.allow("find_file"),
-        policy.allow("finish"),
+        policy.allow(types.BuiltinTools.VIEW_FILE),
+        policy.allow(types.BuiltinTools.LIST_DIR),
+        policy.allow(types.BuiltinTools.SEARCH_DIR),
+        policy.allow(types.BuiltinTools.FIND_FILE),
+        policy.allow(types.BuiltinTools.FINISH),
         policy.allow(github_mcp, GITHUB_TOOLS),     # posts the review
     ],
     skills_paths=["./.github/review-skills"],
@@ -104,7 +104,9 @@ Also relevant:
 
 **What is actually new here is narrow: the money.** The SDK already gives you token usage (`Conversation.total_usage`), budget limits (`BudgetConfig`), tracing, skills and policies. Neither published reviewer converts any of it into currency. `run-agy-sdk` declares a `stats` output for "token expenditures" and ships `f.write("stats={}\n")  # placeholder`; the codelab does not raise the subject. Both authenticate with an API key secret rather than Workload Identity Federation.
 
-So this contributes four things: **pricing** (a rate table that gets cached input and reasoning tokens right), a **dollar-denominated ceiling** on top of the SDK's token limits, **WIF** so spend attributes to a project by construction, and **reconciliation** against the billing export. The reviewing, the enforcement and the accounting are all borrowed, with thanks.
+So this contributes three things: **pricing** (a rate table that gets cached input and reasoning tokens right), a **dollar-denominated ceiling** on top of the SDK's token limits, and **WIF** so spend attributes to a project by construction. The reviewing, the enforcement and the accounting are all borrowed, with thanks.
+
+It was four. **Per-PR reconciliation against the billing export is struck**, because the SDK exposes no way to attach a billing label to a generation request — verified against `0.1.12`, not assumed. Spend attributes to a *project*, so reconciliation survives at project level and per-PR figures remain self-reported by Source 1. That is a weaker claim than this README made a day ago, and it is the accurate one.
 
 **If per-PR cost visibility does not matter to you, use one of those instead.** They work today and are simpler.
 

@@ -111,9 +111,25 @@ Three rules the table enforces:
 
 Rates are overridable for negotiated or non-standard pricing, because a published list price is not what every organisation pays.
 
-## Source 2: billing labels
+## Source 2: billing labels — **not reachable through this SDK**
 
-Vertex AI accepts labels on generation requests. Labelling every request with the PR that caused it makes Cloud Billing itself the ledger:
+🔴 **This section describes something the SDK does not expose, and the design has to change because of it.**
+
+Verified against `0.1.12`: `LocalAgentConfig` has 25 fields and none of them is `labels`. `GeminiModelOptions` — the object that carries per-request model settings — has exactly two fields, `thinking_level` and `service_tier`. A scan of every Pydantic model in `types` for a field matching `label`, `tag` or `metadata` returns one hit, `Step.usage_metadata`, which is token counts. **There is no surface for attaching a billing label to a generation request.**
+
+What that costs this project, stated plainly:
+
+- **Per-PR attribution in Cloud Billing does not exist.** The billing export can attribute spend to a *project*, because WIF puts it there, but not to a repository or a pull request. The query below cannot be written.
+- **Reconciliation weakens from per-PR to per-project-per-day.** Still worth doing — a stale rate or an unpriced model shows up as project-level drift — but it can no longer identify *which* review drifted.
+- **One of the four claimed contributions is gone as designed.** [`prior-art.md`](prior-art.md) lists reconciliation as a contribution. It survives only in the weaker form.
+
+Options, none of them free: attach labels at a layer below the SDK if the endpoint can be constructed with them (`VertexEndpoint` is exported and takes `options`, so this is worth one probe before giving up); accept project-level reconciliation and say so; or run one project per repository, which makes the project boundary do the work the label was going to do and is plausible for a small number of repositories.
+
+**Until that is settled, Source 1 is the only per-PR figure, and it is self-reported.** The README should not claim otherwise.
+
+The original design, kept for reference and for whoever finds the surface:
+
+Vertex AI accepts labels on generation requests. Labelling every request with the PR that caused it would make Cloud Billing itself the ledger:
 
 ```python
 labels = {
@@ -147,19 +163,21 @@ Caveat worth stating plainly: labels are only as good as their coverage. If any 
 
 **The SDK already enforces budgets.** `BudgetConfig` caps a session declaratively:
 
-| field | caps | scope |
+All five dials are **cumulative across the session**. Verified against `types.BudgetConfig` in the installed `0.1.12` wheel, not inferred:
+
+| field | caps | source docstring |
 |---|---|---|
-| `max_model_calls` | model invocations | session |
-| `max_tool_calls` | tool invocations | session |
-| `max_input_tokens` | **net uncached** input (prompt minus cached) | **evaluated proactively before each dispatch** |
-| `max_output_tokens` | generated tokens, candidate **and** thinking | cumulative |
-| `max_total_tokens` | net uncached input + output | cumulative |
+| `max_model_calls` | model invocations | "across the session" |
+| `max_tool_calls` | tool invocations | "across the session, regardless of tool source" |
+| `max_input_tokens` | **net uncached** input | "across the session (prompt tokens minus cached content tokens **across all turns**)" |
+| `max_output_tokens` | output | "across the session (candidates **+ thoughts**)" |
+| `max_total_tokens` | net input + output | "across the session … **across all turns**" |
 
-When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, and so on.
+When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, `QUOTA_EXHAUSTED`, and so on.
 
-🔴 **The scope column is where an earlier draft of this document was wrong, and the error was load-bearing.** It treated `max_input_tokens` as a session total and built the dollar ceiling on it. The SDK describes it as *"evaluated proactively before dispatch"*, computing net uncached prompt tokens for **that request**, while only `max_output_tokens` and `max_total_tokens` are described as tracking cumulative consumption. A per-request cap does not bound a session: twenty turns at 90k net input each never trip a 100k limit, and the ceiling silently fails to hold for the exact workload this project exists to bound. Confirm the scope of all three in M0 before trusting any of them.
+⚠️ **A draft of this document briefly claimed `max_input_tokens` was per-dispatch and rebuilt the ceiling around that. It was wrong.** The SDK guide's phrase *"evaluated proactively before dispatch"* describes **when the check runs**, not what the counter measures — the counter is a session total, and the check simply happens before sending rather than after. Reading a scope claim into a timing claim inverted the design for one revision. The source docstring is unambiguous and is quoted above so nobody has to take either reading on trust.
 
-That correction turns out to be a gift. `max_input_tokens` is *better* as a per-dispatch cap than it was as a session one, because a single oversized prompt is precisely the failure this project set out to avoid — the 2.9 MB OpenAPI file in [`design.md`](design.md) is one dispatch, not twenty. So it becomes the cliff guard, and the cumulative dials carry the budget.
+**The consequence for the cliff guard:** there is no per-request token cap in `BudgetConfig` at all. Nothing here refuses a single oversized prompt. The 2.9 MB OpenAPI file in [`design.md`](design.md) is stopped by the `view_file` byte cap and by `compaction_threshold`, and by nothing else. That guard is therefore load-bearing rather than belt-and-braces.
 
 **Do not write a hook for this.** An earlier draft of this document proposed a `pre_turn` hook computing cost and calling `stop()`. That was reinventing `BudgetConfig`, worse: it checks only between turns, it has no typed stop reason, and it would have to reimplement the net-uncached arithmetic the SDK already does correctly.
 
@@ -178,14 +196,10 @@ def budget_for(max_cost_usd: float, model: str, output_ratio: float = 0.05) -> B
     in_tokens  = max_cost_usd * (1 - output_ratio) / rate.input  * 1e6
 
     return types.BudgetConfig(
-        # cumulative, and the ceiling that actually binds
-        max_total_tokens=int(out_tokens + in_tokens),
-        # cumulative, and includes thinking tokens
-        max_output_tokens=int(out_tokens),
-        # per-dispatch: refuse one oversized prompt, unrelated to the budget
-        max_input_tokens=SINGLE_PROMPT_CAP,
-        # a stuck loop is cheap per turn and still unbounded
-        max_model_calls=MAX_CALLS,
+        max_input_tokens=int(in_tokens),               # net uncached, session
+        max_output_tokens=int(out_tokens),             # candidates + thoughts
+        max_total_tokens=int(out_tokens + in_tokens),  # backstop on the mix
+        max_model_calls=MAX_CALLS,                     # a stuck loop is cheap per turn
         max_tool_calls=MAX_TOOL_CALLS,
     )
 ```
