@@ -6,7 +6,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 1 — WIF infrastructure as Terraform
 
-- [ ] **Task: Write the parameterised WIF module** *(integration)*
+- [~] **Task: Write the parameterised WIF module** *(integration)*
   - [ ] Create `terraform/wif/` with `variables.tf` (`project_id`, `github_owner`, `github_repo`, `pool_id`, `sa_name`), `main.tf`, `outputs.tf`
   - [ ] Workload identity pool and OIDC provider for `token.actions.githubusercontent.com`
   - [ ] Service account with `roles/aiplatform.user` on `project_id`, and nothing else
