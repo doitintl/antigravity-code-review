@@ -2,7 +2,11 @@
 
 An AI pull request reviewer built on the [Google Antigravity SDK](https://github.com/google-antigravity/antigravity-sdk-python), with **per-PR cost tracking and per-PR cost limits** as first-class features.
 
-> **Status: design stage.** This repository currently contains the plan, not an implementation. See [`docs/design.md`](docs/design.md) for the architecture and [`docs/cost-tracking.md`](docs/cost-tracking.md) for the cost model. Milestones are in [`docs/roadmap.md`](docs/roadmap.md).
+> **Status: design stage.** This repository currently contains the plan, not an implementation.
+> [`docs/design.md`](docs/design.md) — architecture ·
+> [`docs/cost-tracking.md`](docs/cost-tracking.md) — the cost model ·
+> [`docs/roadmap.md`](docs/roadmap.md) — milestones and risks ·
+> [`docs/prior-art.md`](docs/prior-art.md) — what already exists and what is borrowed from it.
 
 ## Why another PR reviewer
 
@@ -40,7 +44,7 @@ Roughly, in the agent process:
 
 ```python
 from google.antigravity import Agent, LocalAgentConfig, CapabilitiesConfig
-from google.antigravity.hooks.policy import deny, allow
+from google.antigravity.hooks import policy
 
 config = LocalAgentConfig(
     vertex=True,
@@ -49,17 +53,19 @@ config = LocalAgentConfig(
     system_instructions=REVIEWER_INSTRUCTIONS,
     capabilities=CapabilitiesConfig(),
     policies=[
-        deny("*"),            # nothing unless named below
-        allow("view_file"),
-        allow("grep_search"),
-        allow("list_directory"),
+        policy.deny_all(),               # nothing unless named below
+        policy.allow("view_file"),
+        policy.allow("list_directory"),
+        policy.allow("search_directory"),
+        policy.allow("find_file"),
+        policy.allow(github_mcp),        # posts the review
     ],
-    tools=[post_inline_comment, post_summary],
-    hooks=[budget_guard],     # stops the run at the cost ceiling
+    skills_paths=["./.github/review-skills"],
+    hooks=[budget_guard],                # stops the run at the cost ceiling
 )
 ```
 
-Tool names above are illustrative and are pinned against the SDK during the first milestone.
+Tool names are the ones the SDK exposes, taken from the two published implementations (see [`docs/prior-art.md`](docs/prior-art.md)) and re-verified in M0.
 
 ## Cost model in one paragraph
 
@@ -67,11 +73,22 @@ Token counts come from the SDK's own `Conversation.total_usage`, which reports `
 
 ## Prior art
 
-- [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action) — the pull-context design this follows. Its prompt carries a file list and the model is given `Glob`, `Grep`, `LS` and `Read`.
-- [`derailed-dash/gemini-review-action`](https://github.com/derailed-dash/gemini-review-action) — a push-context reviewer on Gemini. Cheap and effective on ordinary PRs.
-- [`google-github-actions/run-gemini-cli`](https://github.com/google-github-actions/run-gemini-cli) — official Google action wrapping the Gemini CLI, including a PR-review workflow.
+**Two Antigravity SDK reviewers already exist, and this project starts from them.** Full notes in [`docs/prior-art.md`](docs/prior-art.md).
 
-If an off-the-shelf action meets your needs, use it. The case for this project is the combination of pull-context reviewing, an enforceable per-PR budget, and cost attribution good enough to defend in a spending review.
+- [`rsamborski/run-agy-sdk`](https://github.com/rsamborski/run-agy-sdk) — a composite Action running the SDK for reviews. Source of the GitHub-MCP posting path and the deny-by-default policy model used here.
+- [Google codelab: *Supercharge Code Quality*](https://codelabs.developers.google.com/agy-cli-sdk-code-review) — interactive CLI review plus an automated SDK reviewer. Source of `response_schema`, `skills_paths` for repository rules, and hooks as a second enforcement layer.
+
+Also relevant:
+
+- [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action) — the pull-context design this follows. Its prompt carries a file list and the model gets `Glob`, `Grep`, `LS` and `Read`.
+- [`derailed-dash/gemini-review-action`](https://github.com/derailed-dash/gemini-review-action) — a push-context reviewer on Gemini. Cheap and effective on ordinary PRs.
+- [`google-github-actions/run-gemini-cli`](https://github.com/google-github-actions/run-gemini-cli) — official Google action wrapping the Gemini CLI, with a PR-review workflow.
+
+**What is actually new here is narrow: the money.** Neither Antigravity reviewer tracks cost. `run-agy-sdk` declares a `stats` output for "token expenditures" and ships `f.write("stats={}\n")  # placeholder`; the codelab does not raise the subject. Both authenticate with an API key secret rather than Workload Identity Federation.
+
+So this project contributes per-PR cost reporting, an enforceable per-PR ceiling, WIF so spend attributes to a project by construction, and reconciliation against the billing export. The reviewing itself is borrowed, with thanks.
+
+**If per-PR cost visibility does not matter to you, use one of those instead.** They work today and are simpler.
 
 ## Contributing
 

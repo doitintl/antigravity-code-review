@@ -44,9 +44,9 @@ runner: python -m antigravity_code_review
       ▼
 Antigravity Agent (Vertex, read-only policy)
       │
-      ├── view_file / grep_search / list_directory   ← the agent decides
-      ├── post_inline_comment / post_summary          ← custom tools
-      └── budget_guard hook                           ← pre-turn cost check
+      ├── view_file / find_file / search_directory   ← the agent decides
+      ├── github MCP server (allowlisted tools)      ← posts the review
+      └── budget_guard hook                          ← pre-turn cost check
       │
       ▼
    PR review posted   +   review-cost.json artifact
@@ -56,26 +56,51 @@ Antigravity Agent (Vertex, read-only policy)
 
 **Collector.** Reads the PR from the GitHub API and produces the prompt seed: title, body, base and head refs, and one line per changed file (`path`, change type, `+adds/-dels`, blob SHA). **No file contents and no diff hunks.** Keeping the diff out is what stops a large file from mattering; the agent fetches hunks through a tool when it wants them.
 
-**Agent.** An `Agent` from the SDK, configured with `vertex=True` and ADC. Read-only by policy:
+**Agent.** An `Agent` from the SDK, configured with `vertex=True` and ADC. Read-only by policy, using the tool names the SDK actually exposes:
 
 ```python
-policies = [
-    deny("*"),
-    allow("view_file"),
-    allow("grep_search"),
-    allow("list_directory"),
+review_policies = [
+    policy.deny_all(),
+    policy.allow("view_file"),
+    policy.allow("list_directory"),
+    policy.allow("search_directory"),
+    policy.allow("find_file"),
+    policy.allow("finish"),
 ]
 ```
 
-The SDK's `Agent` is read-only by default; the explicit denylist-then-allowlist is belt and braces, and it is auditable in a way a default is not.
+The SDK's `Agent` is read-only by default; the explicit deny-all-then-allow is belt and braces, and it is auditable in a way a default is not.
 
-**Reporting tools.** Two custom Python callables registered as tools: `post_inline_comment(path, line, severity, body)` and `post_summary(body)`. Registering them as tools rather than parsing a structured blob at the end means findings can be emitted as the agent works, and a run that hits its budget ceiling still leaves what it found.
+**A second enforcement layer.** Policies gate *which* tools may run, not *what arguments* they may run with. If `run_command` is ever allowed, a hook must constrain it — the pattern in both reference implementations is to reject anything that is not a `git` invocation. For a reviewer, prefer not allowing it at all.
+
+**Reporting.** Two established options, and this is a genuine trade-off rather than a settled question.
+
+*Structured output.* Pass `response_schema=ReviewResult` so the SDK enforces a typed result, then post it in one go. Reliable and easy to validate. This is what the Google codelab does.
+
+*GitHub MCP server.* Register `ghcr.io/github/github-mcp-server` with an explicit `enabled_tools` allowlist and let the agent post through it:
+
+```python
+github_mcp = types.McpStdioServer(
+    name="github",
+    command="docker",
+    args=["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN",
+          "ghcr.io/github/github-mcp-server:v0.27.0"],
+    enabled_tools=[
+        "pull_request_read", "pull_request_review_write",
+        "add_comment_to_pending_review", "get_file_contents", "search_code",
+    ],
+)
+```
+
+This is what `run-agy-sdk` does. It removes any need to write GitHub API code, and `enabled_tools` is itself a security boundary.
 
 **Budget guard.** A pre-turn hook, described in [`cost-tracking.md`](cost-tracking.md).
 
-### Why not simply parse a final JSON blob
+### Where reporting and the budget guard conflict
 
-A single structured response is easier to validate but discards everything when the run is cut short — by a budget stop, a timeout, or a transient failure. Emitting findings through tools makes partial results the normal case rather than a loss.
+A single structured response only exists at the end, so a run stopped at its cost ceiling produces **nothing at all**. Incremental posting through MCP survives a stop, but is harder to validate and can leave a half-finished review on the PR.
+
+**Leaning:** MCP with incremental posting, plus a stop message that makes the partial state explicit. To be settled with evidence in M1 rather than by preference. If structured output wins instead, the budget guard must post an explicit "stopped, no findings" comment rather than failing silently.
 
 ## Guardrails carried over from the push-based design
 
@@ -96,9 +121,11 @@ Truncation must be loud. A silently shortened file is worse than an absent one, 
 
 ## Repository rules
 
-Reviewers are far more useful when they know a repository's own invariants. The plan is to load rules from a conventional path (for example `.github/review-rules.md`) and place them in the system instructions.
+Reviewers are far more useful when they know a repository's own invariants.
 
-One caveat, learned from watching a similar mechanism in production: if rules are exposed as something the agent *may* look up, it will often decline to, and the review then silently reflects generic knowledge while appearing to be repo-aware. **Rules that must apply belong in the system instructions, not behind a tool call.**
+The SDK supports this directly through **Agent Skills**, via `skills_paths` on the config — the mechanism the Google codelab uses to supply its `code-review-and-quality` skill. Use that rather than inventing a parallel convention.
+
+One caveat, learned from watching a similar mechanism in production: **if repository rules are reachable only through a discovery tool the agent may choose to call, it will often not call it.** The review then reflects generic knowledge while appearing to be repo-aware, which is worse than having no rules at all, because nobody can tell from the output. Whether `skills_paths` injects unconditionally or is discovered on demand decides this, and it is an explicit M4 check. Anything that must always apply belongs in `system_instructions`.
 
 ## Non-determinism and evaluation
 
@@ -119,8 +146,8 @@ This is scheduled early ([`roadmap.md`](roadmap.md), M5) rather than late, becau
 
 These are unresolved and are called out rather than assumed.
 
-1. **Headless authentication in CI.** ADC via WIF is documented for the SDK and is the intended path, but has not yet been exercised in a GitHub Actions runner here. This is M0's first task because everything else depends on it.
-2. **Actual tool names and signatures** exposed by the SDK's capability set. The names used in this document are illustrative.
+1. **Headless authentication in CI via WIF.** The SDK supports `vertex=True` with ADC, and the codelab's agent falls back to it when no API key is set. But **both published examples authenticate their workflow with an API key secret**, so the WIF path inside a GitHub Actions runner is demonstrated nowhere. Still M0's first task, though a smaller risk than it looked: the SDK side is supported, only the CI wiring is unproven.
+2. **Whether `skills_paths` injects unconditionally or is discovered on demand.** Decides whether repository rules reliably reach the model. See "Repository rules" above.
 3. **Cost versus a single-shot reviewer**, measured rather than assumed. Plausibly several times higher per review. Whether the extra findings justify it is an empirical question, and the answer may be "only on larger PRs".
 4. **Latency.** Multi-turn agents are slower. If a review lands after a human has already merged, it buys nothing — which is the single most common way an AI reviewer becomes shelfware.
 5. **Context caching.** Whether the SDK exposes explicit caching, and whether a stable system-instruction prefix makes it worthwhile.

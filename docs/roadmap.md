@@ -8,20 +8,25 @@ Milestones are ordered so that the riskiest unknowns are settled first and each 
 
 Everything else assumes Workload Identity Federation → Application Default Credentials → Vertex, inside a GitHub Actions runner with no interactive step. That path is documented, but until it runs green in a workflow it is an assumption.
 
+Both published implementations authenticate with an API key secret, so **nobody has demonstrated the WIF path in CI**. The SDK side is supported (`vertex=True` with ADC, and the codelab's agent falls back to it), so this is wiring rather than research — but it is unproven, and everything else depends on it.
+
 - [ ] A workflow that authenticates via WIF and completes one trivial agent call on Vertex
 - [ ] Confirm the SDK picks up ADC with `GOOGLE_GENAI_USE_VERTEXAI`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`
-- [ ] Record the actual tool names and signatures the capability set exposes
-- [ ] Confirm `Conversation.total_usage` is populated on a real Vertex run
+- [ ] Confirm `Conversation.total_usage` is populated on a **Vertex** run, not only on an API-key run
+- [ ] Re-verify the tool names against the installed version rather than trusting the examples
 - [ ] Note the wheel's platform requirements for `ubuntu-latest`
 
 **Exit:** a green workflow printing a token count. If ADC does not work headlessly, stop and reconsider before building anything on top.
 
 ## M1 — A reviewer that posts
 
+Most of this exists in the prior art and should be adopted rather than rewritten.
+
 - [ ] Collector: PR metadata and changed-file list, **no file bodies, no diff hunks**
-- [ ] Read-only policy: `deny("*")` then allow read, grep, list
-- [ ] `view_file` with a byte cap and a loud truncation marker
-- [ ] `post_inline_comment` and `post_summary` as registered tools
+- [ ] Read-only policy: `policy.deny_all()`, then allow `view_file`, `list_directory`, `search_directory`, `find_file`
+- [ ] `view_file` byte cap with a loud truncation marker (the one thing the prior art does not do)
+- [ ] GitHub MCP server with a pinned image and an `enabled_tools` allowlist
+- [ ] Decide reporting: incremental MCP posting vs `response_schema`, on evidence — see the conflict with the budget guard in [`design.md`](design.md)
 - [ ] Triggers: `pull_request`, plus a comment command to re-run
 - [ ] Job-level concurrency keyed by PR and event, so pushes supersede
 
@@ -49,11 +54,12 @@ Everything else assumes Workload Identity Federation → Application Default Cre
 
 ## M4 — Repository rules
 
-- [ ] Load `.github/review-rules.md` into the **system instructions**, not behind a tool call
-- [ ] Fail loudly if a configured rules file is missing, rather than reviewing generically and appearing repo-aware
+- [ ] Supply rules as an Agent Skill via `skills_paths`, the SDK's own mechanism
+- [ ] **Determine whether `skills_paths` injects unconditionally or is discovered on demand.** If discovery is optional, rules that must always apply move to `system_instructions`
+- [ ] Fail loudly if a configured rules path is missing, rather than reviewing generically while appearing repo-aware
 - [ ] Document the size limit for rules
 
-**Exit:** a rule stated in the file changes the review on a PR that violates it.
+**Exit:** a rule stated in the skill changes the review on a PR that violates it, **and** a run log showing the rule was actually in context rather than assumed to be.
 
 ## M5 — Evaluation
 
@@ -93,3 +99,4 @@ Deliberately not last. Without it, every quality claim is an anecdote, and there
 | Non-determinism | Regressions land unnoticed | M5 |
 | Prompt injection from PR content | The agent reads attacker-controllable text by design | System instruction plus an evaluation fixture |
 | The SDK is new and moving | API churn | Pin; keep the surface used small |
+| Two published reviewers already exist | This project may not be worth building | Its scope is deliberately narrow — cost tracking and enforcement. If that turns out not to matter, use the prior art and archive this |
