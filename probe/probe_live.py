@@ -7,7 +7,9 @@ import asyncio, json, os, sys, tempfile, traceback, pathlib
 
 from google.antigravity import Agent, LocalAgentConfig, types
 
-PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "sascha-playground-doit")
+PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
+if not PROJECT:
+    raise SystemExit("set GOOGLE_CLOUD_PROJECT to the project to bill these probe calls to")
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
 MODEL = "gemini-3.7-flash"
 

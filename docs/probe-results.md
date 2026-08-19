@@ -1,6 +1,6 @@
 # Probe results
 
-Measured against `google-antigravity==0.1.12`, Vertex, project `sascha-playground-doit`, model `gemini-3.7-flash`, on 2026-08-19. Reproduce with [`probe/probe_offline.py`](../probe/probe_offline.py) and [`probe/probe_live.py`](../probe/probe_live.py).
+Measured against `google-antigravity==0.1.12`, Vertex, model `gemini-3.7-flash`, on 2026-08-19. Reproduce with [`probe/probe_offline.py`](../probe/probe_offline.py) and [`probe/probe_live.py`](../probe/probe_live.py).
 
 Total cost of establishing everything below: **under 90k tokens**, roughly **$0.08** at the introductory rate. Every question the plan had been hedging for four revisions, for the price of a cup of nothing.
 
@@ -134,4 +134,4 @@ So "the runner, not the agent, owns publication" is now proven both **necessary*
 - **Q4.** Subagent roll-up, properly controlled.
 - **Q5.** Whether retries count against `max_model_calls`.
 
-Scratch repo for these runs: `SaschaHeyer/agy-probe-q8` (private, two PRs). Left in place so the runs can be re-inspected; delete when done.
+These runs used a private scratch repository with two throwaway pull requests. Recreate one with any repo containing a PR with a couple of obvious defects.
