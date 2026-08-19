@@ -11,6 +11,7 @@ green run — a probe that cannot fail proves nothing.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 
@@ -23,19 +24,53 @@ from antigravity_code_review.usage import format_usage, read_usage
 LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global")
 MODEL = os.environ.get("AGY_MODEL", "gemini-3.7-flash")
 
-# Credential-shaped inputs that must not be present. Their absence is the claim
-# this probe exists to support, so it is asserted rather than trusted.
-FORBIDDEN_ENV = ("GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS")
+# API keys must not be present at all. Their absence is the claim this probe
+# exists to support, so it is asserted rather than trusted.
+FORBIDDEN_ENV = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 
 
 def assert_keyless() -> None:
+    """Assert no key material is in play.
+
+    `GOOGLE_APPLICATION_CREDENTIALS` is deliberately NOT treated as evidence of
+    a key. Under Workload Identity Federation, google-github-actions/auth sets
+    it to an *external account credential configuration* — instructions for
+    exchanging the runner's OIDC token, carrying no private key. A first
+    revision of this probe failed the run on the variable's mere presence,
+    which would have rejected the very mechanism it exists to prove.
+
+    What matters is the file's `type`:
+      external_account  -> WIF. Keyless. This is what we want.
+      service_account   -> a downloaded key. Fails.
+    """
     present = [name for name in FORBIDDEN_ENV if os.environ.get(name)]
     if present:
         raise SystemExit(
             f"FAIL: {', '.join(present)} is set. This probe must prove keyless "
             "auth; with a key present a green run would prove nothing."
         )
-    print("keyless: no API key or credentials file in the environment  OK")
+
+    creds_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not creds_path:
+        print("keyless: no API key, no credentials file (bare ADC)  OK")
+        return
+
+    try:
+        with open(creds_path, encoding="utf-8") as handle:
+            cred = json.load(handle)
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"FAIL: GOOGLE_APPLICATION_CREDENTIALS is set but unreadable: {exc}")
+
+    cred_type = cred.get("type")
+    if cred_type != "external_account":
+        raise SystemExit(
+            f"FAIL: credential type is {cred_type!r}, not 'external_account'. "
+            "That is a downloaded key, not federation."
+        )
+    if "private_key" in cred:
+        raise SystemExit("FAIL: the credential file contains a private key.")
+
+    print(f"keyless: credential type is 'external_account' ({cred.get('subject_token_type', '?')})  OK")
 
 
 async def probe(project: str) -> int:

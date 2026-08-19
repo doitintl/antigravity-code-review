@@ -35,18 +35,19 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Refuse to run with a key present
-        # The probe asserts this too. Failing here as well means a key added by
-        # accident stops the job before it can reach Vertex and quietly succeed
-        # for the wrong reason.
+      - name: Refuse to run with an API key present
+        # Runs BEFORE auth, so it sees the environment as the repository
+        # configured it. GOOGLE_APPLICATION_CREDENTIALS is checked after auth
+        # instead, where its contents can be inspected -- under WIF that file
+        # is an external account config, not a key.
         run: |
-          for v in GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_APPLICATION_CREDENTIALS; do
+          for v in GEMINI_API_KEY GOOGLE_API_KEY; do
             if [ -n "${!v:-}" ]; then
               echo "::error::$v is set. This workflow must prove keyless auth."
               exit 1
             fi
           done
-          echo "No credential-shaped variables present."
+          echo "No API key present."
 
       - id: auth
         name: Authenticate to Google Cloud (WIF, no key)
@@ -54,6 +55,19 @@ jobs:
         with:
           workload_identity_provider: projects/234439745674/locations/global/workloadIdentityPools/github-pool/providers/agy-code-review
           service_account: agy-code-review@sascha-playground-doit.iam.gserviceaccount.com
+
+      - name: Assert the credential is federation, not a key
+        run: |
+          f="${GOOGLE_APPLICATION_CREDENTIALS:-}"
+          if [ -z "$f" ]; then echo "No credentials file; bare ADC."; exit 0; fi
+          t=$(python3 -c "import json,sys;print(json.load(open(sys.argv[1])).get('type'))" "$f")
+          echo "credential type: $t"
+          if [ "$t" != "external_account" ]; then
+            echo "::error::Expected external_account (WIF), got $t — that is a downloaded key."
+            exit 1
+          fi
+          if grep -q private_key "$f"; then echo "::error::Credential file contains a private key."; exit 1; fi
+          echo "Federation confirmed: no key material."
 
       - uses: astral-sh/setup-uv@f94ec6bedd8674c4426838e6b50417d36b6ab231 # v5.3.1
         with:
