@@ -26,22 +26,55 @@ Put that against a fourteen-turn review: roughly 90k tokens of pure tool-schema 
 
 The corollary is less comfortable: **a bare "Say OK." costs ~11k input tokens.** Any per-review cost model that reasons from content size alone will understate by that floor times the turn count.
 
-## 🔴 There are tools you cannot see and cannot switch off
+## ✅ FR5 — the tools you "cannot see" are not there at all
 
-With `enabled_tools=[VIEW_FILE, FINISH]`, the model was asked to name every tool it could call. It answered:
+**This reverses the finding that previously stood here.** With `enabled_tools=[VIEW_FILE, FINISH]`, the model was asked to name every tool it could call and answered `manage_task, schedule, view_file`. That was read as the harness injecting tools underneath the allowlist. It is not what happens.
+
+Taken from the wire contract rather than the model — `probe/probe_tool_inventory.py`, `0.1.12`, no billed call:
+
+| source of truth | count | contains `manage_task` / `schedule`? |
+|---|---|---|
+| `HarnessSideTools` proto slots | 14 | no |
+| `BuiltinTools` enum | 13 | no |
+| `InitializeConversationResponse` | 4 fields — `cascade_id`, `history`, `cumulative_usage`, `trajectory_usage` | **no tool catalogue at all** |
+
+The direction of the handshake is the whole answer. `HarnessConfig` is what the SDK **sends**; the harness sends back no tool list. **The registered set is exactly what the client declares, so there is nothing underneath the allowlist to hide.**
+
+### Where the model got the names
+
+`manage_task` is a real tool — in the Antigravity **IDE**, not in this SDK. The 101 MB `bin/localharness` is shared with that product and still carries its system-prompt templates. Recovered verbatim from the binary:
 
 ```
-manage_task, schedule, view_file
+/third_party/jetski/prompt/template_provider/templates/system_prompts/plugins.tmpl
+"Use the manage_task tool to interact with them (e.g. to kill them or check their status)"
+"context canceled by manage_task"
 ```
 
-`manage_task` and `schedule` are **not members of `BuiltinTools`**, are not named anywhere in the SDK's documentation, and were not requested. `enabled_tools` is an allowlist over the documented enum only; the harness injects its own tools underneath it.
+So the model did not invent the name: **it read it.** That is prompt contamination from a shared binary — a more tractable problem than an unauditable tool, and a different one. `schedule` appears only as a bare string with no tool context.
 
-This matters twice over:
+### Neither is reachable, and neither writes
 
-- **The read-only claim is narrower than stated.** `manage_task` plausibly writes the `task.md` artifact the SDK stores under `app_data_dir`, and `schedule` plausibly relates to triggers. Neither was audited, neither can be denied by name through `enabled_tools`, and the security posture in [`design.md`](design.md) does not account for them. A `policy.deny_all()` floor still covers them at the policy layer — which is now the *only* thing that covers them, and is the argument for keeping layer 2 even though layer 1 is stronger.
-- **`finish` did not appear** in the model's own list despite being enabled, so the list is the model's report rather than ground truth. Treat it as evidence, not as an inventory.
+An unregistered name is answered by the tool runner with `Unknown tool: '<name>'` (`tools/tool_runner.py:368`). There is no dispatch path to a tool the client never declared. The cost of the model trying is one wasted model call.
 
-Worth an explicit M0 task: get the real registered tool list out of the harness rather than out of the model.
+`tool_search_config.enabled` is `False` and is never set by `_to_harness_side_tools_proto`, so deferred tool loading — the one route by which an unlisted tool could legitimately appear — is off.
+
+### What this changes
+
+- **The read-only claim is *not* narrower than stated.** The previous entry speculated that `manage_task` "plausibly writes the `task.md` artifact"; it does not write anything here, because it does not exist here.
+- **`policy.deny_all()` keeps its place, on a different argument.** It is no longer the only thing covering invisible built-ins — there are none. It still matters for MCP tools, which *are* declared dynamically by the server.
+- **The one part of the original finding that survives:** `finish` did not appear in the model's own list despite being enabled. **A model's account of its own tools is evidence, not an inventory.** That is what motivated reading the proto, and it was the right instinct.
+
+### Confirmed in passing: the default really is write-capable
+
+The same probe re-confirms commit `887880e`. `LocalAgentConfig` does not leave `capabilities` unset — it constructs `CapabilitiesConfig()` with `enabled_tools=None`, which `_resolve_active_tools` expands to *every* built-in:
+
+| configuration | write-capable slots enabled |
+|---|---|
+| `LocalAgentConfig` default | **`file_edit`, `write_to_file`, `run_command`** (12 of 14 slots on, subagents included) |
+| `BuiltinTools.read_only()` | none |
+| reviewer shape `[VIEW_FILE, FINISH]` | none |
+
+Note the trap: the strategy-level fallback for `cfg=None` *is* read-only, and a first pass at this probe measured that path and concluded the default was safe. `LocalAgentConfig` never reaches it. **Measure the default that ships, not the one the code would use if the caller passed nothing.**
 
 ## `view_file` — contract confirmed
 
@@ -162,7 +195,6 @@ Both the workflow and the probe now inspect the file rather than the variable na
 
 ## Still open
 
-- **Q1 (CI half).** WIF token exchange inside a GitHub Actions runner. The SDK half is proven.
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
 - **Q4.** Subagent roll-up, properly controlled.
 - **Q5.** Whether retries count against `max_model_calls`.
