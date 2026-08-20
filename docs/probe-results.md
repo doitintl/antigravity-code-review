@@ -1267,6 +1267,63 @@ about review quality, and it needs three things:
 3. **Structured findings** — file, line, claim — matched on location rather than
    wording. Keyword scoring over free text has already produced one false zero.
 
+## M2.5 shipped: the port works, and the judge is now the ceiling
+
+The contract-pass structure moved from `probe/` into `review.py`, and running it
+end to end immediately found something no unit test would have.
+
+### Contract questions alone lost local recall
+
+On the fixture — seven planted defects, mostly local — the ported reviewer found
+**2**, against the general reviewer's **4**. It lost a SQL injection and a
+`Decimal`/`float` mismatch, and reframed a committed API key as *"has no effect
+because the configuration key is never read"*.
+
+That last one is the lens showing through. A write/read asymmetry pass pointed at
+a credential sees dead configuration, because asymmetry is the only question it
+was asked. **Contract questions add cross-file recall; they do not replace asking
+whether the changed code is simply wrong**, and shipping them as a replacement
+traded one blindness for another.
+
+Fixed by adding a fourth pass that runs first and asks the plain question — will
+this compile, will it produce a wrong result, is it a security defect, does it
+contradict a convention here — with an explicit instruction not to describe a
+credential in source as unused configuration.
+
+**Caught only because the port was run rather than assumed correct from its
+parts, and only because the fixture exercises different defect classes than
+`draft#538`.** Optimising against one pull request regressed the other, which is
+the n=1 trap arriving on schedule.
+
+### The judge is now the limiter
+
+| run | passes | reported |
+|---|---|---|
+| contract only | 3 | hardcoded key · overdraft bypass |
+| + local-defect pass | 4 | **SQL injection** · **`Decimal`/`float` TypeError** |
+
+More passes surfaced more, and **the count reported stayed at 2 while the
+identity of the 2 changed completely.** None of the four runs reported the same
+pair.
+
+This is M1's measurement reappearing one stage later. There, the reviewer dropped
+the marginal finding whenever its list ran short; here, the judge selects roughly
+two defects from whatever the passes surface. The bottleneck has moved from
+perceiving to describing to judging, and each move was progress.
+
+Cost improved while this happened: **$0.0751 with four passes**, against $0.1240
+with three — a shorter, less exploratory run.
+
+### Not tuning this
+
+The rule from the previous entry applies. Four runs, four different pairs, one
+fixture: the variance is larger than any change worth making, and picking a judge
+prompt that reports four instead of two would be fitting to noise.
+
+**This is an M5 question**, and it is now the sharpest one the harness has to
+answer: given a set of surfaced properties, how many become reported defects, how
+stable is that selection, and does it depend on the prompt or on the model.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
