@@ -32,6 +32,7 @@ import json
 import os
 import sys
 import tempfile
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -49,7 +50,7 @@ from antigravity_code_review.config import (
 )
 from antigravity_code_review.cost import price_session
 from antigravity_code_review.evalharness.findings import parse_findings as parse_finding_records
-from antigravity_code_review.evalharness.runs import classify
+from antigravity_code_review.evalharness.runs import RunOutcome, classify
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
@@ -130,6 +131,74 @@ def parse_findings(text: str) -> list[dict[str, Any]]:
     return [f.as_comment() for f in parse_finding_records(text)]
 
 
+async def run_passes(
+    *,
+    project: str,
+    workspace: str,
+    patches: dict[str, str],
+    listing: str,
+    subject: str,
+    collector: UsageCollector,
+    passes: Sequence[tuple[str, str]] = CONTRACT_PASSES,
+    pass_instructions: str = PASS_INSTRUCTIONS,
+    judge_instructions: str | None = JUDGE_INSTRUCTIONS,
+) -> tuple[list[dict[str, Any]], list[RunOutcome]]:
+    """Run the passes and the judge, and return findings plus a per-stage outcome.
+
+    Extracted so the eval harness drives **the reviewer**, not a reimplementation
+    of it. A harness measuring its own copy of the pipeline measures the copy,
+    and this project has already published three numbers that were about the
+    instrument rather than the thing under test.
+
+    The parameters that differ between configurations — the passes, the pass
+    instructions, whether there is a judge at all — are arguments, which is what
+    makes FR8's "configurations are comparable" reachable without a second
+    implementation.
+    """
+    reports: list[str] = []
+    outcomes: list[RunOutcome] = []
+
+    for name, question in passes:
+        print(f"[pass] {name}")
+        cfg = _agent_config(project, workspace, pass_instructions, patches, collector.hooks())
+        prompt = f"{subject}:\n{listing}\n\nYOUR AUDIT QUESTION:\n{question}\n"
+        try:
+            text, stop = await _run(cfg, prompt, collector)
+        except Exception as exc:  # noqa: BLE001 - a dead pass must not lose the others
+            print(f"   FAILED: {type(exc).__name__}: {exc}")
+            outcomes.append(classify(None, error=f"{type(exc).__name__}: {exc}", stage=name))
+            continue
+        # Q8: a budget stop returns empty text, which reads exactly like a clean
+        # pass. One definition of "did this finish", shared with the eval
+        # harness, so the reviewer and the thing measuring it cannot disagree.
+        outcome = classify(stop, text=text, stage=name)
+        outcomes.append(outcome)
+        if outcome.incomplete and not text:
+            print(f"   INCOMPLETE — {outcome.reason}")
+            continue
+        print(f"   {len(text)} chars")
+        reports.append(f"### {name}\n{text}")
+
+    findings: list[dict[str, Any]] = []
+    if reports and judge_instructions:
+        print("[judge] deciding which described properties are defects")
+        cfg = _agent_config(project, workspace, judge_instructions, patches, collector.hooks())
+        joined = "AUDIT REPORT:\n\n" + "\n\n".join(reports)[:200_000]
+        try:
+            text, stop = await _run(cfg, joined, collector)
+            findings = parse_findings(text)
+            outcomes.append(classify(stop, text=text, findings=len(findings), stage="judge"))
+            print(f"   {len(findings)} defect(s)")
+        except Exception as exc:  # noqa: BLE001 - losing the judge must not lose the cost record
+            print(f"   FAILED: {type(exc).__name__}: {exc}")
+            outcomes.append(classify(None, error=f"{type(exc).__name__}: {exc}", stage="judge"))
+    elif reports:
+        # No judge in this configuration: the passes' own output is the result.
+        findings = parse_findings("\n".join(reports))
+
+    return findings, outcomes
+
+
 async def review(repo: str, number: int, project: str) -> int:
     pr = get_pull_request(repo, number)
 
@@ -150,43 +219,16 @@ async def review(repo: str, number: int, project: str) -> int:
     workspace = os.getcwd()
     os.environ.setdefault("AGY_WORKSPACE", workspace)
     collector = UsageCollector()
-    reports, incomplete = [], []
 
-    for name, question in CONTRACT_PASSES:
-        print(f"[pass] {name}")
-        cfg = _agent_config(project, workspace, PASS_INSTRUCTIONS, patches, collector.hooks())
-        prompt = (
-            f"Pull request #{number} changes {len(files)} files:\n{listing}\n\n"
-            f"YOUR AUDIT QUESTION:\n{question}\n"
-        )
-        try:
-            text, stop = await _run(cfg, prompt, collector)
-        except Exception as exc:  # noqa: BLE001 - a dead pass must not lose the others
-            print(f"   FAILED: {type(exc).__name__}: {exc}")
-            incomplete.append(name)
-            continue
-        # Q8: a budget stop returns empty text, which reads exactly like a clean
-        # pass. One definition of "did this finish", shared with the eval
-        # harness, so the reviewer and the thing measuring it cannot disagree.
-        outcome = classify(stop, text=text, stage=name)
-        if outcome.incomplete and not text:
-            print(f"   INCOMPLETE — {outcome.reason}")
-            incomplete.append(name)
-            continue
-        print(f"   {len(text)} chars")
-        reports.append(f"### {name}\n{text}")
-
-    findings: list[dict[str, Any]] = []
-    if reports:
-        print("[judge] deciding which described properties are defects")
-        cfg = _agent_config(project, workspace, JUDGE_INSTRUCTIONS, patches, collector.hooks())
-        try:
-            text, stop = await _run(cfg, "AUDIT REPORT:\n\n" + "\n\n".join(reports)[:200_000], collector)
-            findings = parse_findings(text)
-            print(f"   {len(findings)} defect(s)")
-        except Exception as exc:  # noqa: BLE001 - losing the judge must not lose the cost record
-            print(f"   FAILED: {type(exc).__name__}: {exc}")
-            incomplete.append("judge")
+    findings, outcomes = await run_passes(
+        project=project,
+        workspace=workspace,
+        patches=patches,
+        listing=listing,
+        subject=f"Pull request #{number} changes {len(files)} files",
+        collector=collector,
+    )
+    incomplete = [o.stage or "stage" for o in outcomes if o.incomplete]
 
     priced = price_session(collector.turns, FLASH, datetime.now(tz=timezone.utc).date())
     print(cost_line(priced, tool_calls=collector.tool_calls))

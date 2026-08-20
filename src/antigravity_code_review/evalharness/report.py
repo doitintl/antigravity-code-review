@@ -65,7 +65,7 @@ class Report:
 
     @property
     def fixtures(self) -> list[str]:
-        seen = {}
+        seen: dict[str, None] = {}
         for record in self.records:
             seen[record.score.fixture] = None
         return list(seen)
