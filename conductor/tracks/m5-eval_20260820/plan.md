@@ -37,10 +37,12 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
 
 ## Phase 2 — Scoring that survives paraphrase
 
-- [ ] **Task: Structured finding records** *(logic)*
-  - [ ] Reviewer emits file, line, claim rather than prose
-  - [ ] Tolerate a line range and a near-miss line number; a finding is not wrong for being two lines off
-- [ ] **Task: The scorer** *(logic)*
+- [x] **Task: Structured finding records** *(logic)* — `00b2b46`
+  - [x] Reviewer emits file, line, claim rather than prose — `review.py` now parses through the
+        same module, so the reviewer's output and the scorer's input are one definition
+  - [x] Tolerate a line range and a near-miss line number; a finding is not wrong for being two
+        lines off — ranges, reversed ranges, and a 3-line tolerance
+- [~] **Task: The scorer** *(logic)*
   - [ ] Match on **location first**, text only to disambiguate
   - [ ] A paraphrase of the same defect at the same location scores as found
   - [ ] **Validate against a reference review before use** — a scorer that cannot find the defects in `claude[bot]`'s own text reports a false zero for everything
