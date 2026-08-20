@@ -103,7 +103,7 @@ runner is also the expensive half, and it should not be written against a guess.
     an anecdote — cross-file blindness is stable across two repositories, not a bad draw
   - **The harness produced a false 0/4 and corrected it for `$0`** — a defect recorded as a point
     where the reference text had named a span. Cross-file 0/25 → 2/25
-- [ ] **Task: Re-test what was rejected on one sample** *(integration)*
+- [x] **Task: Re-test what was rejected on one sample** *(integration)* — `98e7af2`
   - [ ] Batching, `thinking_level`, judge tooling were each rejected on n=1
   - [ ] Some may have been rejected on noise. Say which
   - **Arms built and ready:** `contract-passes+judge` (the baseline, AC8),
@@ -116,6 +116,19 @@ runner is also the expensive half, and it should not be written against a guess.
   - **Judge tooling is not re-tested either.** Giving the judge tools was one prompt change
     measured once; the arm that matters more is whether the judge helps *at all*, which
     `contract-passes-only` answers. Said plainly rather than quietly dropped
-- [ ] **Task: Write up the evidence** *(chore)*
-  - [ ] Record results with the SDK version; check off M5 in `docs/roadmap.md`
+  - **Result: the hypothesis is refuted.** Removing the judge made cross-file recall **worse**
+    (0/18 against 2/25) and cost ~40% less. The judge is not what stands between the reviewer
+    and the cross-file defects
+  - **`thinking_level=HIGH` was built but not run** — a deliberate scope call. With the judge
+    arm showing the bottleneck is not in the judging stage, 4× reasoning on the same context is
+    unlikely to move a stable 0/18, and the arm costs another `$3.50`. The configuration is
+    registered and tested, so running it is one command
+- [ ] **Task: Baseline against a single-shot reviewer** — **not done, and named in the roadmap.**
+      Q12 called it "a decision, not a discovery": it needs a second reviewer stood up, not more
+      harness
+- [ ] **Task: A prompt-injection fixture** — **not done, and named in the roadmap.** It measures
+      safety rather than recall, and needs a fixture authored for it
+- [x] **Task: Write up the evidence** *(chore)* — `e90815c`
+  - [x] Record results with the SDK version (`0.1.12`, `gemini-3.7-flash`, global, 2026-08-20);
+        check off M5 in `docs/roadmap.md`, with the two unmet items named rather than dropped
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
