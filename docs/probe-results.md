@@ -683,6 +683,83 @@ has already produced two wrong numbers that looked fine.
 for a review to appear in it, and compare. Until then the figure is arithmetic
 from a cited rate, which is better than a guess and is not the same as verified.
 
+## 🔴 The reviewer does not survive a real pull request
+
+First test outside the fixture: `doitbse/draft#538`, 30 changed files,
++715/-30, in a 2,446-file Next.js repository. **The same pull request the
+previous reviewer failed on**, which makes it a clean comparison.
+
+### What the old reviewer did
+
+```
+400 INVALID_ARGUMENT: The input token count exceeds the maximum
+number of tokens allowed 1048576
+```
+
+It attached codebase context — 2,314 files, 21.7 MB against a 1.5 MB limit —
+fell back to "Sparse Context Mode", and still blew the window. This is the
+failure quoted in [`design.md`](design.md) as the reason this project exists.
+
+### What ours did
+
+Not that. Something else, twice, at $1.51 and $1.46 a run:
+
+```
+stop: MAX_INPUT_TOKENS_EXCEEDED
+7,575,648 in (85% cached) · 32,714 out · 87 tool calls · zero findings
+```
+
+### The byte cap works. That part is proven
+
+`docs/openapi.json` in this PR is **2,947,014 bytes** — byte for byte the file
+`design.md` uses as its motivating example. This is the real case, not a
+reconstruction of it.
+
+| | tokens if read |
+|---|---|
+| `openapi.json`, uncapped | **~736,000** |
+| `openapi.json`, capped at 131,072 bytes | ~33,000 |
+| the other 29 changed files | ~147,000 |
+| **all 30 files, uncapped** | **~884,000** — inside a 1M window, with nothing to spare |
+| **all 30 files, capped** | **~180,000** |
+
+**The cliff is gone.** One generated file no longer ends the review. That was the
+project's founding claim and it holds.
+
+### What kills it instead: accumulation across turns
+
+The agent behaves correctly. It calls `find_file` to orient, then `view_file`
+once per changed file. The trace shows nothing wasteful.
+
+But **every file it reads stays in context for every later turn.** Thirty files
+of ~180k tokens, resent across ~30 turns, is ~5M cumulative — and the observed
+figure was 7.5M. The cost is quadratic in files read, and nothing in the
+configuration bounds it.
+
+`CapabilitiesConfig(compaction_threshold=...)` is the lever, and **M1 never set
+it**. `design.md` names it as the only thing that bounds context growth, and the
+implementation left it at whatever the SDK defaults to.
+
+### Why the fixture never caught this
+
+Four files. A two-file diff gives the agent nothing to accumulate and no reason
+to explore. **The M1 exit criterion was met by a pull request small enough that
+the failure mode could not occur** — which is the argument for M5 restated as an
+incident, and an argument for fixtures that resemble real work.
+
+### What this changes
+
+- **M3 must bound context growth, not just spend.** A dollar ceiling that stops
+  a runaway after $1.50 is not the same as a reviewer that does not run away.
+- **`compaction_threshold` belongs in the configuration**, with a measured value.
+- **Per-review cost is not flat.** The 4-7 cents measured on the fixture is a
+  two-file number; this PR cost twenty times that and produced nothing.
+- **A large PR may need splitting** — reviewing in batches, or per directory —
+  rather than one session holding thirty files at once.
+
+Recorded as a failure rather than filed as a bug, because the reviewer is
+working as designed and the design is what needs to change.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
