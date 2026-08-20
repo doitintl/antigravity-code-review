@@ -84,3 +84,49 @@ def is_fork_pull_request(pr: dict[str, Any]) -> bool:
         # and leaking a federated credential to an unknown head is not.
         return True
     return head_id != base_id
+
+
+def find_pending_review(repo: str, number: int) -> dict[str, Any] | None:
+    """Return this actor's PENDING review on the PR, if one exists.
+
+    Q8 established the reason this matters: a budget-stopped session leaves a
+    PENDING review carrying real comments but zero visible ones — invisible to
+    everybody until something submits it. The runner is that something.
+    """
+    for review in _api(f"repos/{repo}/pulls/{number}/reviews") or []:
+        if review.get("state") == "PENDING":
+            return review
+    return None
+
+
+def submit_review(repo: str, number: int, review_id: int, body: str, event: str = "COMMENT") -> Any:
+    """Submit a pending review.
+
+    `event` stays COMMENT rather than REQUEST_CHANGES or APPROVE. An automated
+    reviewer that can block a merge is a different product with a different
+    failure mode, and approving on the strength of an agent's read is worse.
+    """
+    return _api(
+        f"repos/{repo}/pulls/{number}/reviews/{review_id}/events",
+        method="POST",
+        body={"body": body, "event": event},
+    )
+
+
+def rescue_pending_review(repo: str, number: int, stop_reason: str) -> bool:
+    """Publish whatever the agent had written when it stopped.
+
+    Called on any non-UNSPECIFIED stop. Returns True when a review was
+    published. The stop reason goes in the body verbatim, because a review that
+    ends early and does not say so reads as a complete review that found little.
+    """
+    review = find_pending_review(repo, number)
+    if review is None:
+        return False
+    body = (
+        f"_This review was submitted by the runner after the agent stopped: "
+        f"`{stop_reason}`. Findings above are what it had recorded by that point "
+        f"and may be incomplete._"
+    )
+    submit_review(repo, number, review["id"], body)
+    return True

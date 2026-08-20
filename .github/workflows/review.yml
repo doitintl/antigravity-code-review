@@ -1,0 +1,122 @@
+name: AI code review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  issue_comment:
+    types: [created]
+
+# Keyed by PR *and* event, so a new push supersedes an in-flight review of the
+# previous head rather than racing it. Comment-triggered runs get their own
+# group so a re-run request does not cancel a push-triggered review.
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number || github.event.issue.number }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write        # WIF token exchange. No API key anywhere.
+  pull-requests: write   # the reviewer posts review comments
+
+jobs:
+  gate:
+    # Decide whether to run at all, before spending anything.
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      pr: ${{ steps.decide.outputs.pr }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          IS_PR_COMMENT: ${{ github.event.issue.pull_request != null }}
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          ASSOCIATION: ${{ github.event.comment.author_association }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        run: |
+          set -euo pipefail
+          run=false; pr=""; reason=""
+
+          if [ "$EVENT" = "pull_request" ]; then
+            pr="$PR_NUMBER"
+            # A fork PR gets a read-only token and no identity federation, so it
+            # cannot reach Vertex at all. Say that, rather than dying on auth.
+            if [ -z "$HEAD_REPO" ] || [ -z "$BASE_REPO" ] || [ "$HEAD_REPO" != "$BASE_REPO" ]; then
+              reason="fork pull request (${HEAD_REPO:-unknown} -> ${BASE_REPO:-unknown}): no identity federation is available, so no review was posted"
+            else
+              run=true
+            fi
+          elif [ "$EVENT" = "issue_comment" ]; then
+            pr="$ISSUE_NUMBER"
+            if [ "$IS_PR_COMMENT" != "true" ]; then
+              reason="comment was not on a pull request"
+            elif ! printf '%s' "$COMMENT_BODY" | grep -qE '^[[:space:]]*/review([[:space:]]|$)'; then
+              reason="comment is not a /review command"
+            # A per-run budget bounds one run. It says nothing about how many
+            # runs a stranger can start, so the trigger is gated on write access.
+            elif [ "$ASSOCIATION" != "OWNER" ] && [ "$ASSOCIATION" != "MEMBER" ] && [ "$ASSOCIATION" != "COLLABORATOR" ]; then
+              reason="commenter association '$ASSOCIATION' does not have write access; re-run refused"
+            else
+              run=true
+            fi
+          fi
+
+          echo "run=$run"       >> "$GITHUB_OUTPUT"
+          echo "pr=$pr"         >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          [ "$run" = "true" ] && echo "::notice::running review for PR #$pr" || echo "::notice::skipped: $reason"
+
+  review:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Refuse any credential-shaped input
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GEMINI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+            echo "::error::An API key is set. This reviewer authenticates by WIF only."
+            exit 1
+          fi
+          echo "no API key present"
+
+      - uses: google-github-actions/auth@71f986410dfbc7added4569d411d040a91dc6935 # v2.1.8
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - uses: astral-sh/setup-uv@f94ec6bedd8674c4426838e6b50417d36b6ab231 # v5.3.1
+
+      - name: Install
+        run: |
+          uv venv
+          uv pip install -e .
+
+      - name: Review
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT }}
+          GOOGLE_CLOUD_LOCATION: global
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ needs.gate.outputs.pr }}
+          # The MCP container is a child of the harness and inherits only what
+          # LocalAgentConfig(env=...) passes it. This is the token it needs.
+          GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run python -m antigravity_code_review.review
+
+  skipped:
+    needs: gate
+    if: needs.gate.outputs.run != 'true' && needs.gate.outputs.reason != ''
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "::notice::No review posted — ${{ needs.gate.outputs.reason }}"

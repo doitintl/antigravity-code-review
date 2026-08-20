@@ -8,15 +8,15 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 1 — The verification fixture
 
-- [ ] **Task: Create the scratch repository and the defect PR** *(chore — outward-facing, confirm before acting)*
-  - [ ] Private repository with a small, realistic source tree
-  - [ ] One pull request carrying a handful of obvious, clearly-labelled planted defects
-  - [ ] Record the defect inventory alongside the fixture, so "did it find them" is answerable rather than a judgement call
-  - [ ] **Confirm with the user before creating the repository** — this creates outward-facing resources
-- [ ] **Task: Apply WIF for the fixture project** *(integration)*
-  - [ ] Copy `terraform/environments/playground/`, change only the variables — if anything else needs editing, the module is under-parameterised and that is the finding
-  - [ ] Apply, and verify the attribute condition binds the fixture repository alone
-  - [ ] Confirm the service account holds `roles/aiplatform.user` and nothing else
+- [x] **Task: Create the scratch repository and the defect PR** *(chore — outward-facing, confirm before acting)* `abff5b6`
+  - [x] Private repository with a small, realistic source tree
+  - [x] One pull request carrying a handful of obvious, clearly-labelled planted defects — 7 planted, plus a 582 KB generated file for the cap
+  - [x] Record the defect inventory — kept in **this** repo, not the fixture, so the reviewer cannot read the answers
+  - [x] **Confirm with the user before creating the repository** — confirmed
+- [x] **Task: Apply WIF for the fixture project** *(integration)* `abff5b6` — **the module was not variables-only: `sa_name` was missing from the env wrapper**
+  - [x] Copy `terraform/environments/playground/`, change only the variables — **it needed more: `sa_name` was not exposed. Fixed in both environments**
+  - [x] Apply, and verify the attribute condition binds the fixture repository alone
+  - [x] Confirm the service account holds `roles/aiplatform.user` and nothing else
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 2 — Collector and the byte cap
