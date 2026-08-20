@@ -4,7 +4,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 **Scheduling note:** Phase 3 runs against local ADC and is independent of Phases 1–2. If WIF fights back in Phase 2, four of the five open M0 items can still close.
 
-## Phase 1 — WIF infrastructure as Terraform
+## Phase 1 — WIF infrastructure as Terraform [checkpoint: 2962837]
 
 - [x] **Task: Write the parameterised WIF module** *(integration)* `2962837`
   - [x] Create `terraform/wif/` with `variables.tf` (`project_id`, `github_owner`, `github_repo`, `pool_id`, `sa_name`), `main.tf`, `outputs.tf`
@@ -18,9 +18,9 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] Verify the attribute condition rejects an exchange from an unbound repository
   - [x] Confirm the service account holds no role beyond `aiplatform.user`
   - [x] Record the applied resource names for the workflow to reference
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
-## Phase 2 — The green run (exit criterion)
+## Phase 2 — The green run (exit criterion) [checkpoint: d863f98]
 
 - [x] **Task: Probe entrypoint** *(logic + integration — split into both)*
   - [x] `m0_probe.py`: one trivial agent call, `vertex=True`, explicit `project`, `location="global"`, tight `BudgetConfig`
@@ -37,7 +37,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] **If ADC fails headlessly:** record the failure verbatim, try Express Mode, and if that proves necessary, exit M0 *red* and correct the "no API keys" claim in `README.md` rather than dropping it quietly
 - [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
-## Phase 3 — Close the remaining verification items
+## Phase 3 — Close the remaining verification items [checkpoint: e06f13c]
 
 *Runs against local ADC; independent of Phases 1–2.*
 
@@ -55,12 +55,12 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] *Unplanned:* subagents fail outright on Vertex in `0.1.12` (`PlatformClient is nil`), and the failed spawn still bills ~10x the control
 - [x] **Task: Q5 — retry accounting (FR8)** *(integration)* `e06f13c`
   - [x] Force a `response_schema` violation; measure whether retries consume `max_model_calls` and appear in usage — retries **are** billed and visible (7.4x baseline), but do **not** consume `max_model_calls`
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
-## Phase 4 — Record and close
+## Phase 4 — Record and close [checkpoint: 86fb5c8]
 
 - [x] **Task: Write up the evidence** *(chore)* `86fb5c8`
   - [x] Append Phase 2 and Phase 3 results to `docs/probe-results.md`, each naming the SDK version
   - [x] Check off all M0 items in `docs/roadmap.md`; mark Q1, Q4 and Q5 closed in the register — 0 M0 items remain open
   - [x] Fold any new finding into `docs/design.md` or `docs/cost-tracking.md` where it changes a decision — both updated; `conductor/product.md` and `conductor/tech-stack.md` raised for the doc-sync step rather than edited unilaterally
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
