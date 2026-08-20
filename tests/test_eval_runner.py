@@ -23,15 +23,36 @@ class TestConfigurationsAreActuallyComparable:
         assert set(CONFIGURATIONS) == {"contract-passes+judge", "contract-passes-only"}
         assert all(name == cfg.name for name, cfg in CONFIGURATIONS.items())
 
-    def test_they_differ_only_in_the_judge(self):
-        """The variable under test has to be the only variable."""
+    def test_they_ask_the_same_questions(self):
         assert CONTRACT_PASSES_WITH_JUDGE.passes == CONTRACT_PASSES_NO_JUDGE.passes
-        assert (
-            CONTRACT_PASSES_WITH_JUDGE.pass_instructions
-            == CONTRACT_PASSES_NO_JUDGE.pass_instructions
-        )
+
+    def test_only_one_of_them_has_a_judge(self):
         assert CONTRACT_PASSES_WITH_JUDGE.judge_instructions is not None
         assert CONTRACT_PASSES_NO_JUDGE.judge_instructions is None
+
+    def test_the_no_judge_arm_asks_its_passes_for_structured_findings(self):
+        """The bug this catches, caught once already before it shipped.
+
+        The shipped pass instructions deliberately produce PROSE. A no-judge
+        configuration built on them parses zero findings from every run and
+        reports a guaranteed 0 — which reads exactly like evidence that the
+        judge is essential. An instrument producing the headline number is the
+        failure this milestone exists to end."""
+        instructions = CONTRACT_PASSES_NO_JUDGE.pass_instructions
+        assert "one JSON object per line" in instructions
+        assert '"claim"' in instructions
+
+    def test_the_judged_arm_leaves_its_passes_describing_rather_than_reporting(self):
+        assert "one JSON object per line" not in CONTRACT_PASSES_WITH_JUDGE.pass_instructions
+
+    def test_the_two_arms_therefore_differ_in_two_things_not_one(self):
+        """Recorded rather than hidden. Structured output has to come from
+        somewhere, so removing the judge cannot be done alone, and any
+        conclusion drawn from this comparison has to say so."""
+        assert (
+            CONTRACT_PASSES_WITH_JUDGE.pass_instructions
+            != CONTRACT_PASSES_NO_JUDGE.pass_instructions
+        )
 
     def test_the_shipped_configuration_runs_the_local_defect_pass_first(self):
         """M2.5: contract questions alone lost a SQL injection and a type

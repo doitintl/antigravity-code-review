@@ -38,6 +38,7 @@ from antigravity_code_review.config import (
     CONTRACT_PASSES,
     JUDGE_INSTRUCTIONS,
     PASS_INSTRUCTIONS,
+    PASS_INSTRUCTIONS_STRUCTURED,
 )
 from antigravity_code_review.cost import price_session
 from antigravity_code_review.evalharness.findings import parse_findings
@@ -74,7 +75,16 @@ class Configuration:
 
 
 CONTRACT_PASSES_WITH_JUDGE = Configuration(name="contract-passes+judge")
-CONTRACT_PASSES_NO_JUDGE = Configuration(name="contract-passes-only", judge_instructions=None)
+# NOT a single-variable comparison, and the difference is recorded rather than
+# hidden: removing the judge also requires the passes to emit structured
+# findings, because the prose instructions produce none. A no-judge arm built on
+# the prose instructions would score a guaranteed zero and read as proof that the
+# judge is essential.
+CONTRACT_PASSES_NO_JUDGE = Configuration(
+    name="contract-passes-only",
+    pass_instructions=PASS_INSTRUCTIONS_STRUCTURED,
+    judge_instructions=None,
+)
 
 CONFIGURATIONS = {c.name: c for c in (CONTRACT_PASSES_WITH_JUDGE, CONTRACT_PASSES_NO_JUDGE)}
 
