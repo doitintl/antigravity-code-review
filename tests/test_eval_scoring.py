@@ -18,6 +18,7 @@ from antigravity_code_review.evalharness.findings import Finding
 from antigravity_code_review.evalharness.fixtures import load_fixture
 from antigravity_code_review.evalharness.scoring import (
     ScorerValidationError,
+    ambiguous_pairs,
     findings_from_reference,
     score_run,
     scored_recall,
@@ -209,6 +210,37 @@ class TestReportingShape:
         """FR8: a run names the configuration that produced it."""
         s = score_run(_fixture(_defect("d1")), [_finding()], configuration="contract-passes")
         assert s.configuration == "contract-passes"
+
+
+class TestAmbiguousDefectPairs:
+    """Where two defects sit closer than twice the line tolerance, location
+    alone cannot separate them and the tie-break decides. That weakens the
+    guarantee this scorer is built on, so the fixture is made to admit it
+    rather than letting the degradation stay invisible."""
+
+    def test_two_defects_within_the_tolerance_window_are_reported(self):
+        f = _fixture(_defect("d1", line=30), _defect("d2", line=33))
+        pairs = ambiguous_pairs(f)
+        assert pairs == [("d1", "d2", 3)]
+
+    def test_defects_far_apart_are_not(self):
+        f = _fixture(_defect("d1", line=30), _defect("d2", line=300))
+        assert ambiguous_pairs(f) == []
+
+    def test_defects_in_different_files_are_never_ambiguous(self):
+        f = _fixture(_defect("d1", line=30), _defect("d2", file="src/b.ts", line=31))
+        assert ambiguous_pairs(f) == []
+
+    def test_a_defect_with_no_line_is_not_paired(self):
+        """It matches everything in its file by design; that is not ambiguity
+        between two recorded locations."""
+        f = _fixture(_defect("d1", line=None), _defect("d2", line=33))
+        assert ambiguous_pairs(f) == []
+
+    def test_the_window_follows_the_tolerance(self):
+        f = _fixture(_defect("d1", line=30), _defect("d2", line=40))
+        assert ambiguous_pairs(f) == []
+        assert ambiguous_pairs(f, tolerance=6) == [("d1", "d2", 10)]
 
 
 class TestValidatingTheScorerBeforeUse:

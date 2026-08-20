@@ -217,6 +217,36 @@ def score_run(
     )
 
 
+def ambiguous_pairs(
+    fixture: Fixture, tolerance: int = DEFAULT_TOLERANCE
+) -> list[tuple[str, str, int]]:
+    """Defect pairs too close together for location alone to tell apart.
+
+    Two findings' spans overlap when the defects are within `2 * tolerance` of
+    each other in the same file. For those, "location first, text only to
+    disambiguate" degrades to "text decides", and the scorer's central guarantee
+    is weaker than it looks.
+
+    Reported rather than fixed. Narrowing the tolerance to separate them would
+    reintroduce the near-miss failure this project measured, and moving the
+    recorded lines would be editing the evidence. What the harness owes its
+    reader is the disclosure.
+
+    Returns:
+        `(first_id, second_id, gap)` triples, in fixture order.
+    """
+    pairs = []
+    defects = [d for d in fixture.defects if d.line is not None]
+    for i, left in enumerate(defects):
+        for right in defects[i + 1 :]:
+            if normalise_path(left.file) != normalise_path(right.file):
+                continue
+            gap = abs((left.line or 0) - (right.line or 0))
+            if gap <= 2 * tolerance:
+                pairs.append((left.id, right.id, gap))
+    return pairs
+
+
 def findings_from_reference(reference: dict[str, Any]) -> list[Finding]:
     """Turn a fetched reference review into findings the scorer can consume.
 

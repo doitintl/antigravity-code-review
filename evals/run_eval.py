@@ -36,6 +36,7 @@ from antigravity_code_review.evalharness.report import aggregate, render
 from antigravity_code_review.evalharness.runner import CONFIGURATIONS, run_configuration
 from antigravity_code_review.evalharness.scoring import (
     ScorerValidationError,
+    ambiguous_pairs,
     findings_from_reference,
     score_run,
     validate_against_reference,
@@ -101,6 +102,19 @@ def main() -> int:
     unvalidated = _validate_scorer(fixtures)
     print()
 
+    print("GATE 3 — defect pairs location alone cannot separate")
+    ambiguous = 0
+    for fixture in fixtures:
+        for left, right, gap in ambiguous_pairs(fixture):
+            ambiguous += 1
+            print(
+                f"  AMBIGUOUS    {fixture.name}: {left} and {right} are {gap} lines apart. "
+                "Location cannot tell them apart; the text tie-break decides."
+            )
+    if not ambiguous:
+        print("  PASS  every recorded defect is separable by location alone")
+    print()
+
     configuration = CONFIGURATIONS[args.config]
     records = asyncio.run(
         run_configuration(fixtures, configuration, project=project, runs=args.runs)
@@ -114,6 +128,13 @@ def main() -> int:
         print(
             f"  CAVEAT: {unvalidated} fixture(s) have no reference review, so the scorer "
             "is unvalidated\n  against them. Their numbers rest on the scorer being right."
+        )
+    if ambiguous:
+        print()
+        print(
+            f"  CAVEAT: {ambiguous} defect pair(s) sit closer than the line tolerance can "
+            "separate.\n  For those, 'location first, text only to disambiguate' is really "
+            "'text decides'."
         )
 
     if args.out:
