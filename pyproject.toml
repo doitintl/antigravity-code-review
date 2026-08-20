@@ -32,7 +32,10 @@ src = ["src", "tests"]
 # Vendored verbatim from the SDK at tag v0.1.12 and pinned by git blob SHA in
 # probe/probe_example_parity.py. Formatting them would break that check and the
 # provenance it exists to prove, so they are not ours to lint.
-extend-exclude = ["probe/sdk_examples"]
+# The fixture directory holds gitignored local data and per-fixture reachability
+# scripts. They are not part of this repository — see evals/README.md — so they
+# are not ours to lint either.
+extend-exclude = ["probe/sdk_examples", "evals/fixtures"]
 
 [tool.mypy]
 python_version = "3.10"

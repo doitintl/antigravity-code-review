@@ -1324,6 +1324,61 @@ prompt that reports four instead of two would be fitting to noise.
 answer: given a set of surfaced properties, how many become reported defects, how
 stable is that selection, and does it depend on the prompt or on the model.
 
+## M5 — reachability, verified by execution rather than asserted
+
+`probe/probe_reachability.py`, run 2026-08-20 against the curated set. The
+harness's first job is to stop measuring itself, and the first way it did that
+in M1 was a defect that could not fire.
+
+```
+4 fixture(s), 2 repositor(y/ies), 20 defect(s)
+1. THE GATE  — PASS, all 20 carry non-placeholder evidence
+2. EXECUTION — observed by execution : 5
+               recorded trigger path : 15
+               failed to reproduce   : 0
+```
+
+### Five defects, run rather than read
+
+| defect | class | observed |
+|---|---|---|
+| type mismatch | local | `TypeError: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'` on **every** call |
+| ledger guard bypass | local | 500 moved from a balance of 100, returned `True`, balance **−407.50**; the guarded API raises `insufficient funds` on the same move |
+| SQL injection | security | one call with a crafted argument wrote **two** rows, the second entirely attacker-controlled |
+| swallowed audit failure | local | balances moved, `True` returned, **no error surfaced and no audit row exists** |
+| hardcoded credential | security | live-format key present at the head SHA, 45 characters |
+
+**Three of these are shadowed by the first.** The type mismatch raises before
+the rest of the function runs, so they are exercised against a copy with *only*
+that defect repaired and nothing else changed, and the probe's own output says
+so. That is the honest form of the claim: a reviewer reads the code as written
+and reports the shadowing defect too, so a defect reachable-once-the-other-is-fixed
+is a defect. A defect no input can reach is not, which is why the M1 fixture's
+unconditional `return True` was **dropped from the set** rather than carried into
+it. It was scored 0/8 and the reviewer was right.
+
+### The number that matters more is 15
+
+**Fifteen of twenty defects were not executed.** Their evidence is a trigger
+path recorded by an independent reviewer — better than our own reading, and not
+the same claim as running it. The probe prints `EXECUTED` and `RECORDED` as
+separate lines for exactly that reason, and reports outright that a set with
+nothing executed is the position M1 was in.
+
+Those fifteen live in a TypeScript web application with no harness to drive
+them, so executing them is not a small piece of work. Recorded as a limitation
+of the set rather than smoothed over: **recall measured on those fixtures rests
+on somebody else having read the code carefully, not on the defect having been
+made to fire.**
+
+### The gate is mechanical, and says so
+
+`require_reachable()` rejects placeholder evidence — `TODO`, `yes`, `n/a` — and
+applies a length floor. It cannot tell a careful trigger path from a
+confident-sounding guess and does not try to. A credibility heuristic over prose
+would be the fourth instrument in this document to produce a headline number of
+its own.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

@@ -87,6 +87,7 @@ class Fixture:
     defects: tuple[Defect, ...]
     pr: int | None = None
     reference_review: str | None = None
+    reachability_probe: str | None = None
     notes: str | None = None
 
     def defects_by_class(self) -> dict[DefectClass, list[Defect]]:
@@ -201,6 +202,7 @@ def load_fixture(obj: dict[str, Any], source: str | None = None) -> Fixture:
         defects=defects,
         pr=int(pr) if pr is not None else None,
         reference_review=obj.get("reference_review"),
+        reachability_probe=obj.get("reachability_probe"),
         notes=obj.get("notes"),
     )
 

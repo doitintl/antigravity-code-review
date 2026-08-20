@@ -43,5 +43,5 @@ terraform/environments/fixture/.terraform.lock.hcl
 # code is committed; the code under measurement never is. Populate a working
 # set locally with evals/curate_fixture.py, or point AGY_EVAL_FIXTURES at a
 # private directory.
-evals/fixtures/*.json
+evals/fixtures/
 evals/reference/

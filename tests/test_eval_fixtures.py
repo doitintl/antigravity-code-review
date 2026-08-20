@@ -194,6 +194,13 @@ class TestFixtureIdentity:
         with pytest.raises(FixtureError, match="repo"):
             load_fixture(_fixture(repo="draft"))
 
+    def test_a_fixture_may_name_a_script_that_executes_its_defects(self):
+        """Executed evidence and recorded evidence are not the same claim, so the
+        harness has to be able to tell them apart."""
+        assert load_fixture(GOOD_FIXTURE).reachability_probe is None
+        f = load_fixture(_fixture(reachability_probe="agy-fixture-1-reach.py"))
+        assert f.reachability_probe == "agy-fixture-1-reach.py"
+
     def test_defects_by_class_groups_for_reporting(self):
         """FR6: recall is reported per class, so the fixture can answer that."""
         f = load_fixture(
