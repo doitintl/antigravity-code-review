@@ -64,14 +64,18 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
 
 ## Phase 3 — The harness
 
-- [ ] **Task: Runner** *(integration)*
-  - [ ] Check out a fixture at its head SHA, run a named configuration, collect findings and cost
-  - [ ] Repeat N times (N ≥ 3) per configuration
-- [ ] **Task: Report** *(logic)*
+**Order swapped, deliberately.** The report is pure logic and it defines the run record the
+runner has to emit; building the runner first would mean inventing that record twice. The
+runner is also the expensive half, and it should not be written against a guess.
+
+- [~] **Task: Report** *(logic)*
   - [ ] Per-defect hit rate across runs, not one number
   - [ ] Broken down by defect class
   - [ ] Cost per run beside recall
   - [ ] Incomplete runs listed separately
+- [ ] **Task: Runner** *(integration)*
+  - [ ] Check out a fixture at its head SHA, run a named configuration, collect findings and cost
+  - [ ] Repeat N times (N ≥ 3) per configuration
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 4 — Replace the single-sample numbers
