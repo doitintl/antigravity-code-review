@@ -35,7 +35,7 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
   - Step 4 found real private-repository detail in two files and forced a scrub — recorded in
     the git note rather than quietly fixed
 
-## Phase 2 — Scoring that survives paraphrase
+## Phase 2 — Scoring that survives paraphrase [checkpoint: 722ddec]
 
 - [x] **Task: Structured finding records** *(logic)* — `00b2b46`
   - [x] Reviewer emits file, line, claim rather than prose — `review.py` now parses through the
@@ -56,7 +56,11 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
         run with a crashed pass report 2/4 as though three had run
   - [x] `review.py` classifies through the same function, so the reviewer and the harness cannot
         disagree about what "finished" means
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md)) — `722ddec`
+  - 375 tests pass; all six harness modules at 100%; ruff and mypy clean
+  - **The check has teeth:** a reconstructed keyword scorer scores 4/4 on the reference text and
+    **0/4 with the words replaced** — the published false zero, reproduced on demand — while the
+    location scorer holds 4/4
 
 ## Phase 3 — The harness
 
