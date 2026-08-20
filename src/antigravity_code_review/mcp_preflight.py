@@ -1,48 +1,59 @@
 """Ask the GitHub MCP server what it actually offers, before the agent starts.
 
-FR7 wanted this validated through the SDK. The SDK has no surface for it —
-`Agent` exposes `chat` and `conversation` and nothing else, and no MCP tool list
-is reachable from either. Rather than leave the check "degraded to unvalidated",
-this speaks MCP to the container directly.
+FR7 wanted the configured tool names validated against the server's `tools/list`.
+The SDK exposes no surface for that — `Agent` offers `chat` and `conversation`
+and nothing else — so this speaks MCP to the container directly, using the `mcp`
+client library the SDK already depends on.
 
-That turns out to be the better place for it. The handshake happens before the
-agent is constructed, so a wrong tool name costs a subprocess and a second,
-rather than a model call and a retry at full context.
+Doing it here rather than inside the agent is the better trade: the handshake
+happens before the `Agent` is constructed, so a wrong tool name costs a
+subprocess and a few seconds instead of a model call and a retry at full context.
+
+A hand-rolled JSON-RPC version of this failed in a way worth recording. Writing
+all three frames and closing stdin makes the server exit before it answers, and
+the resulting empty output looks exactly like "the server has no tools" — which
+sent one investigation off to check whether the pinned image tag existed at all.
+It does. Use a real client and hold the stream open.
 """
 
 from __future__ import annotations
 
-import json
+import asyncio
 import shutil
 import subprocess
 
-PROTOCOL_VERSION = "2025-06-18"
-
 
 class McpUnavailable(RuntimeError):
-    """The server could not be reached. Distinct from 'the server disagreed'."""
+    """The server could not be reached. Distinct from 'the server disagreed'.
 
-
-def _frame(obj: dict) -> str:
-    return json.dumps(obj) + "\n"
-
-
-def list_server_tools(image: str, token: str, timeout: int = 60) -> list[str]:
-    """Return the tool names the MCP server advertises.
-
-    Speaks the three-message stdio handshake: initialize, the initialized
-    notification, then tools/list. Raises `McpUnavailable` when docker is
-    missing or the server never answers — a missing runtime is a different
-    problem from a mismatched allowlist, and conflating them would turn a
-    laptop without docker into a false failure.
+    A laptop without docker is a different problem from an allowlist that
+    disagrees with the server, and conflating them makes a missing runtime look
+    like a configuration error.
     """
+
+
+async def _list_tools(image: str, token: str) -> list[str]:
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    params = StdioServerParameters(
+        command="docker",
+        args=["run", "-i", "--rm", "-e", "GITHUB_PERSONAL_ACCESS_TOKEN", image],
+        env={"GITHUB_PERSONAL_ACCESS_TOKEN": token},
+    )
+    async with stdio_client(params) as (read, write), ClientSession(read, write) as session:
+        await session.initialize()
+        result = await session.list_tools()
+        return sorted(t.name for t in result.tools)
+
+
+def list_server_tools(image: str, token: str, timeout: int = 120) -> list[str]:
+    """Return the tool names the MCP server advertises."""
     if shutil.which("docker") is None:
         raise McpUnavailable("docker is not on PATH")
 
-    # Pull explicitly rather than letting `docker run` do it implicitly. An
-    # implicit pull writes its failure to the same stream as the MCP handshake,
-    # so a registry problem arrives disguised as "the server advertised no
-    # tools" — which sent one investigation down the wrong path entirely.
+    # Pull explicitly. An implicit pull writes its failure to the same stream as
+    # the handshake, so a registry problem arrives disguised as a protocol one.
     pull = subprocess.run(
         ["docker", "pull", "--quiet", image],
         capture_output=True,
@@ -53,58 +64,13 @@ def list_server_tools(image: str, token: str, timeout: int = 60) -> list[str]:
     if pull.returncode != 0:
         raise McpUnavailable(f"could not pull {image}: {pull.stderr.strip()[:300]}")
 
-    payload = (
-        _frame(
-            {
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "initialize",
-                "params": {
-                    "protocolVersion": PROTOCOL_VERSION,
-                    "capabilities": {},
-                    "clientInfo": {"name": "antigravity-code-review", "version": "0"},
-                },
-            }
-        )
-        + _frame({"jsonrpc": "2.0", "method": "notifications/initialized"})
-        + _frame({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}})
-    )
-
     try:
-        result = subprocess.run(
-            [
-                "docker",
-                "run",
-                "-i",
-                "--rm",
-                "-e",
-                f"GITHUB_PERSONAL_ACCESS_TOKEN={token}",
-                image,
-            ],
-            input=payload,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
+        names = asyncio.run(asyncio.wait_for(_list_tools(image, token), timeout=timeout))
+    except TimeoutError as exc:
         raise McpUnavailable(f"{image} did not answer within {timeout}s") from exc
-
-    names: list[str] = []
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            message = json.loads(line)
-        except ValueError:
-            continue
-        tools = (message.get("result") or {}).get("tools")
-        if tools:
-            names.extend(t.get("name", "") for t in tools if t.get("name"))
+    except Exception as exc:
+        raise McpUnavailable(f"{image} handshake failed: {type(exc).__name__}: {exc}") from exc
 
     if not names:
-        raise McpUnavailable(
-            f"{image} advertised no tools (exit {result.returncode}): {result.stderr.strip()[:200]}"
-        )
-    return sorted(set(names))
+        raise McpUnavailable(f"{image} advertised no tools")
+    return names
