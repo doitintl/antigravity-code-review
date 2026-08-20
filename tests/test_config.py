@@ -37,6 +37,10 @@ class TestToolSurface:
         """An interactive tool in unattended CI stalls waiting for nobody."""
         assert types.BuiltinTools.ASK_QUESTION not in cfg.capabilities.enabled_tools
 
+    def test_context_growth_is_bounded(self, cfg):
+        """M1 left this unset; a 30-file PR reached 7.5M cumulative input tokens."""
+        assert cfg.capabilities.compaction_threshold is not None
+
     def test_subagents_disabled(self, cfg):
         """M0: subagent tokens escape BudgetConfig, and delegation fails on Vertex."""
         assert cfg.capabilities.enable_subagents is False
@@ -131,9 +135,30 @@ class TestSystemInstructions:
         assert "pullNumber: 7" in cfg.system_instructions
 
     def test_spells_out_the_posting_sequence(self, cfg):
-        """The agent invented "create_pending" when left to guess."""
+        """The agent invented a tool name when left to guess the sequence."""
         assert "pull_request_review_write" in cfg.system_instructions
-        assert "create_pending" in cfg.system_instructions  # named as a thing NOT to do
+        assert "add_comment_to_pending_review" in cfg.system_instructions
+
+    def test_directs_the_agent_to_the_diff_first(self, cfg):
+        """Opening whole files to find changes is what broke draft#538."""
+        i = cfg.system_instructions.index("view_diff")
+        j = cfg.system_instructions.index("view_file")
+        assert i < j, "view_diff must be introduced before view_file"
+
+    def test_forbids_exploratory_tool_calls(self, cfg):
+        """87 tool calls, zero findings, on the first real pull request."""
+        assert "CLEAR PURPOSE" in cfg.system_instructions.upper()
+        assert "do not explore" in cfg.system_instructions.lower()
+
+    def test_carries_an_explicit_do_not_flag_list(self, cfg):
+        text = cfg.system_instructions.lower()
+        assert "what not to flag" in text
+        for suppressed in ("pre-existing", "linter", "style", "generated files"):
+            assert suppressed in text
+
+    def test_sets_a_precision_bar(self, cfg):
+        assert "NOT CERTAIN" in cfg.system_instructions.upper()
+        assert "false positive" in cfg.system_instructions.lower()
 
     def test_tells_the_agent_not_to_submit(self, cfg):
         assert "runner submits" in cfg.system_instructions.lower()

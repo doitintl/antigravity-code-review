@@ -69,3 +69,48 @@ def view_file(AbsolutePath: str, StartLine: int | None = None, EndLine: int | No
         text = "\n".join(lines[start:end])
 
     return truncate(text, AbsolutePath, cap_bytes=DEFAULT_CAP_BYTES)
+
+
+def make_view_diff(patches: dict[str, str], cap_bytes: int = DEFAULT_CAP_BYTES):
+    """Build a `view_diff` tool serving the hunks already fetched by the collector.
+
+    This is the tool the reviewer was missing. On `doitbse/draft#538` the agent
+    opened `docs/openapi.json` — 2,947,014 bytes, 74,560 lines — to review a
+    30-line change at line 13,329. The byte cap gave it the first 3,113 lines, so
+    it read the wrong region entirely and could not have reviewed that file.
+
+    The patch for the same change is **2,799 bytes**: a thousandth of the file,
+    and unlike the file, it contains the change.
+
+    `design.md` is right that hunks must not go in the prompt seed — attaching
+    them for every file is what produced the original 1M-token failure. Serving
+    them through a tool is the same pull-context principle the seed already
+    follows, applied to the thing actually under review.
+
+    No API call: `list_changed_files` already fetches the patches and the
+    collector discards them.
+    """
+
+    def view_diff(FilePath: str) -> str:
+        """View the changed lines (diff hunks) for one file in this pull request.
+
+        Prefer this over view_file. It shows exactly what the pull request
+        changed, is far smaller than the file, and needs no line numbers.
+
+        Args:
+          FilePath: Path of the changed file, as given in the changed-file list.
+
+        Returns:
+          The unified diff hunks for that file.
+        """
+        patch = patches.get(FilePath)
+        if patch is None:
+            known = ", ".join(sorted(patches)[:8])
+            return (
+                f"[NO DIFF: '{FilePath}' is not a changed file in this pull request, "
+                f"or GitHub omitted its patch because the diff is too large. "
+                f"Changed files include: {known}]"
+            )
+        return truncate(patch, f"{FilePath} (diff)", cap_bytes=cap_bytes)
+
+    return view_diff
