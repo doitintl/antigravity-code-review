@@ -37,7 +37,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 - [x] **Task: `view_file` override (FR5)** *(integration)* — verified live; **found a real defect: the marker was being cut off by the harness's own truncation**
   - [ ] Register a same-name custom tool so it replaces the built-in, and confirm the override actually takes effect
   - [ ] Verify against a real oversized file that the marker reaches the model
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 3 — The agent and its tool surface
 
@@ -52,7 +52,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] `workspaces` set so `policy.workspace_only()` is auto-applied
   - [ ] `app_data_dir` to an **absolute** runner temp path — relative and `~/` raise a validation error
   - [ ] `env` a minimal dict; verify the MCP container does not inherit unrelated workflow secrets
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 4 — GitHub MCP and reporting
 
@@ -64,7 +64,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] `enabled_tools`: `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents`, plus `list_resources` explicitly. **`search_code` is excluded**
   - [ ] The same list mirrored in `policy.allow(server, [...])`
   - [ ] Record the server's real `tools/list` output — the SDK exposes names the server does not have
-- [ ] **Task: Fail fast on allowlist drift (FR7)** *(integration)* — wired in `review.py`; **BLOCKED: needs the MCP server**
+- [x] **Task: Fail fast on allowlist drift (FR7)** *(integration)* — **caught real drift on its first run**: `list_resources` is not a tool the server offers
   - [ ] Wire the comparison to run before the first model call; a mismatch aborts with a clear error and costs nothing
 - [x] **Task: System instructions (FR9)** *(integration)* — **had to be corrected twice from live failures**: repository identity and the call sequence
   - [ ] Exact MCP parameter names and casing — `pullNumber`, `subjectType: LINE`
@@ -74,7 +74,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] Agent posts incrementally into a pending review
   - [ ] On any non-`UNSPECIFIED` stop, the runner finds the `PENDING` review and `POST`s the events endpoint with the stop reason as the body
   - [ ] Verify a budget-stopped run still publishes what it found
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 5 — Workflow: triggers, forks, concurrency
 
@@ -88,7 +88,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] Fork PRs exit early with an explicit message, never an authentication failure
   - [ ] Job-level concurrency keyed by PR **and** event, so a push supersedes an in-flight run
   - [ ] Keyless WIF only; fail loudly if any credential-shaped input is set
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 6 — The green review, and close
 
@@ -97,15 +97,15 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] **The review names at least one planted defect** — a review that found nothing does not demonstrate a reviewer
   - [ ] Confirm no credential appears in the log
   - [ ] Record the turn count and token total, as the first real datum for M2
-- [ ] **Task: Adversarial checks against the fixture** *(integration)* — **BLOCKED**
+- [x] **Task: Adversarial checks against the fixture** *(integration)* — concurrency supersession and the `/review` trigger verified live; the non-collaborator refusal is unit-tested only (needs a second account)
   - [ ] A non-collaborator `/review` comment does not trigger a run
   - [ ] A second push supersedes the in-flight run
   - [ ] An oversized file is truncated visibly and the review still completes
-- [ ] **Task: Write up the evidence** *(chore)*
+- [x] **Task: Write up the evidence** *(chore)*
   - [ ] Append results to `docs/probe-results.md`, naming the SDK version
   - [ ] Check off M1 in `docs/roadmap.md`
   - [ ] Fold anything that changes a decision into `docs/design.md` or `docs/cost-tracking.md`
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 
 ---

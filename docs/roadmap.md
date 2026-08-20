@@ -42,13 +42,13 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 - [ ] GitHub MCP server — hosted (`api.githubcopilot.com/mcp/`, 44 tools) or pinned container — with an `enabled_tools` allowlist **and** the matching list in `policy.allow(server, [...])`. Real tool names: `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents`
 - [x] Reporting decided: incremental MCP posting, runner-owned submit — see [`probe-results.md`](probe-results.md)
 - [ ] **The runner submits, not the agent.** On any non-`UNSPECIFIED` stop, find the `PENDING` review and `POST /pulls/{n}/reviews/{id}/events` with the stop reason as the body — verified working
-- [ ] Validate the MCP `enabled_tools` list against the server's `tools/list` at startup: the SDK exposes names the server does not have, and the failure costs a model call
-- [ ] Allow `list_resources` explicitly, or accept one wasted denied call per run
+- [x] **MCP allowlist validated against the server's `tools/list` before the first model call.** The SDK exposes no way to ask, so the preflight speaks MCP to the container directly. It caught real drift on its first run
+- [x] ~~Allow `list_resources` explicitly~~ — **the server does not offer it.** It is an MCP protocol method, not a GitHub tool; the advice was reasoned from a tool that does not exist
 - [ ] Put exact MCP parameter names and casing in `system_instructions` (`pullNumber`, `subjectType: LINE`) — worth three to four turns per review
 - [ ] Triggers: `pull_request`, plus a comment command to re-run
 - [ ] Job-level concurrency keyed by PR and event, so pushes supersede
 
-**Exit:** a real review posted on a real PR.
+**Exit:** a real review posted on a real PR. ✅ **Met** — run [32350817311](https://github.com/SaschaHeyer/agy-review-fixture/actions/runs/32350817311), ~117k tokens per review.
 
 ## M2 — Cost tracking
 
