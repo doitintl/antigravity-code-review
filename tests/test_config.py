@@ -67,10 +67,16 @@ class TestBudget:
         assert cfg.retry_config.model_output_retry.max_retries == 1
 
 
-class TestModelIsUnset:
-    def test_no_model_pinned(self, cfg):
-        """thinking_level is M5's first measurement axis; do not pre-empt it."""
-        assert cfg.model is None
+class TestModelPinning:
+    def test_model_is_pinned_so_the_rate_is_knowable(self, cfg):
+        """The rate table keys on the model. Unpinned means unpriceable."""
+        from antigravity_code_review.rates import FLASH, RATES
+        assert cfg.model == FLASH
+        assert FLASH in RATES
+
+    def test_thinking_level_is_still_unset(self, cfg):
+        """A separate axis from the model, and M5's to measure."""
+        assert getattr(cfg, "model_options", None) is None
 
 
 class TestIsolation:

@@ -11,6 +11,7 @@ import os
 from google.antigravity import LocalAgentConfig, types
 from google.antigravity.hooks import policy
 
+from antigravity_code_review.rates import FLASH
 from antigravity_code_review.tools import view_file
 
 # Verified in M0: us-central1 returns 404 for this model; `global` is required.
@@ -106,6 +107,7 @@ def build_config(
     owner: str = "",
     repo: str = "",
     number: int | str = "",
+    extra_hooks: list | None = None,
 ) -> LocalAgentConfig:
     """Assemble the reviewer's configuration.
 
@@ -123,14 +125,21 @@ def build_config(
         vertex=True,
         project=project,
         location=LOCATION,
-        # `model` is deliberately unset, and `GeminiModelOptions` is never
-        # constructed. thinking_level is the largest single cost lever and the
-        # first axis M5 will measure; choosing a value now would bake in a guess
-        # that the eval harness then has to argue back out.
+        # The model IS pinned, and that is a deliberate exception: the rate
+        # table keys on it, so an unpinned model means an unpriceable review.
+        # The pinned value is the SDK's own documented default, so this changes
+        # no behaviour — only whether the rate is knowable.
+        #
+        # `GeminiModelOptions` is still never constructed. Pinning the model and
+        # pinning thinking_level are separate axes; the latter is the largest
+        # cost lever and M5's first measurement, and choosing a value now would
+        # bake in a guess the eval harness then has to argue back out.
+        model=FLASH,
         system_instructions=SYSTEM_INSTRUCTIONS_TEMPLATE.format(
             owner=owner, repo=repo, number=number
         ),
         tools=[view_file],  # same name as the built-in, so it overrides it
+        hooks=list(extra_hooks or []),
         mcp_servers=[mcp],
         capabilities=types.CapabilitiesConfig(
             enabled_tools=list(REVIEW_TOOLS),

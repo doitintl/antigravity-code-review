@@ -8,14 +8,19 @@ the result rather than the agent.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
 
 from google.antigravity import Agent, types
 
+from antigravity_code_review.collect_usage import UsageCollector
 from antigravity_code_review.collector import format_seed
 from antigravity_code_review.config import GITHUB_MCP_IMAGE, GITHUB_MCP_TOOLS, build_config
+from antigravity_code_review.cost import price_session
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
@@ -23,6 +28,8 @@ from antigravity_code_review.github import (
 )
 from antigravity_code_review.guards import compare_allowlist, is_fork
 from antigravity_code_review.mcp_preflight import McpUnavailable, alist_server_tools
+from antigravity_code_review.rates import FLASH
+from antigravity_code_review.report import cost_artifact, cost_line
 from antigravity_code_review.usage import format_usage, read_usage
 
 
@@ -42,7 +49,16 @@ async def review(repo: str, number: int, project: str) -> int:
     workspace = os.getcwd()
     app_data_dir = tempfile.mkdtemp(prefix="agy-review-", dir=tempfile.gettempdir())
     owner, _, repo_name = repo.partition("/")
-    config = build_config(project, workspace, app_data_dir, owner, repo_name, number)
+    collector = UsageCollector()
+    config = build_config(
+        project,
+        workspace,
+        app_data_dir,
+        owner,
+        repo_name,
+        number,
+        extra_hooks=collector.hooks(),
+    )
 
     # FR7 preflight. Done before the agent is constructed, so a wrong tool name
     # costs a subprocess rather than a model call and a full-context retry. The
@@ -65,6 +81,10 @@ async def review(repo: str, number: int, project: str) -> int:
         text = (await response.text()).strip()
         stop = response.stop_reason
         usage = read_usage(agent.conversation.total_usage)
+        # Record the final cumulative snapshot. The collector turns cumulative
+        # readings into per-turn deltas, so this is safe to call once or many
+        # times; what matters is that it happens before the session closes.
+        collector.record_cumulative(agent.conversation.total_usage)
 
     print(f"stop: {stop}")
     print(format_usage(usage))
@@ -74,8 +94,27 @@ async def review(repo: str, number: int, project: str) -> int:
     # it, which in CI is github-actions[bot]. So the runner publishes it on
     # EVERY path, not only when the agent stopped early — a clean run that
     # nobody submits is a review nobody can read.
+    # Price what was spent, per turn, at the tier each turn reported. Done
+    # before publishing so the cost line can travel with the review body.
+    priced = price_session(collector.turns, FLASH, datetime.now(tz=UTC).date())
+    line = cost_line(priced, tool_calls=collector.tool_calls)
+    print(line)
+
+    artifact = cost_artifact(
+        priced,
+        repo=repo,
+        pr=number,
+        model=FLASH,
+        tool_calls=collector.tool_calls,
+        compactions=collector.compactions,
+        retries={"api": 0, "model_output": 0},
+        stop_reason=None if stop is None else str(stop),
+    )
+    Path("review-cost.json").write_text(json.dumps(artifact, indent=2), encoding="utf-8")
+    print("wrote review-cost.json")
+
     normal = stop is None or stop == types.StopReason.UNSPECIFIED
-    published = publish_pending_review(repo, number, str(stop), normal=normal)
+    published = publish_pending_review(repo, number, str(stop), normal=normal, cost_line=line)
     print(f"pending review published: {published} (normal stop: {normal})")
     if not published:
         print("WARNING: the agent left no pending review, so nothing was posted.")

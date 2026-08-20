@@ -95,7 +95,9 @@ def submit_review(repo: str, number: int, review_id: int, body: str, event: str 
     )
 
 
-def publish_pending_review(repo: str, number: int, stop_reason: str, *, normal: bool) -> bool:
+def publish_pending_review(
+    repo: str, number: int, stop_reason: str, *, normal: bool, cost_line: str = ""
+) -> bool:
     """Publish the agent's pending review. Always called, not only on failure.
 
     Q8 established that a pending review is invisible to everyone except the
@@ -119,5 +121,9 @@ def publish_pending_review(repo: str, number: int, stop_reason: str, *, normal: 
             f"_The agent stopped early: `{stop_reason}`. The findings above are "
             f"what it had recorded by that point and are probably incomplete._"
         )
+    if cost_line:
+        # The cost travels with the review rather than as a separate comment:
+        # a figure in its own comment gets read without the thing it priced.
+        body += f"\n\n{cost_line}"
     submit_review(repo, number, review["id"], body)
     return True
