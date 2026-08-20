@@ -6,12 +6,20 @@ crash.log
 crash.*.log
 *.tfplan
 tfplan
+# Provider lockfiles belong to root configurations, which commit theirs. This
+# one only appears when `terraform validate` is run inside the module directly.
+terraform/wif/.terraform.lock.hcl
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+# uv resolves from pyproject.toml directly — CI runs `uv pip install -e .`,
+# not `uv sync`, so the lockfile is a local artifact rather than a build input.
+# The SDK is already pinned exactly in pyproject.toml.
+uv.lock
 
 # Python
 __pycache__/
