@@ -62,7 +62,7 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
     **0/4 with the words replaced** — the published false zero, reproduced on demand — while the
     location scorer holds 4/4
 
-## Phase 3 — The harness
+## Phase 3 — The harness [checkpoint: abcc54e]
 
 **Order swapped, deliberately.** The report is pure logic and it defines the run record the
 runner has to emit; building the runner first would mean inventing that record twice. The
@@ -86,7 +86,11 @@ runner is also the expensive half, and it should not be written against a guess.
         recall and still charged)
   - [x] `evals/rescore.py` — re-score saved runs against corrected fixtures without re-spending.
         Earned its place immediately: a fixture defect cost `$0` to correct rather than `$3.48`
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md)) — `abcc54e`
+  - 438 tests pass; all seven logic modules at 100%; ruff and mypy clean
+  - **The phase found a defect in itself:** the harness reported a false 0/4 because a defect was
+    recorded as a point where the reference text had named a span. Caught only because unmatched
+    findings are kept as `novel` rather than discarded. Corrected cross-file 0/25 → 2/25, for `$0`
 
 ## Phase 4 — Replace the single-sample numbers
 
