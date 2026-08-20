@@ -201,8 +201,11 @@ class TestContractPasses:
 
     def test_the_local_pass_forbids_reframing_a_credential(self):
         """The asymmetry lens called a committed API key 'unused configuration'."""
+        import re
+
         from antigravity_code_review.config import CONTRACT_PASSES
-        assert "do not describe it as unused configuration" in CONTRACT_PASSES[0][1]
+        normalised = re.sub(r"\s+", " ", CONTRACT_PASSES[0][1])
+        assert "do not describe it as unused configuration" in normalised
 
     def test_the_contract_questions_survive(self):
         from antigravity_code_review.config import CONTRACT_PASSES
