@@ -52,18 +52,41 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 
 ## M2 — Cost tracking
 
-- [ ] Rate table with promotional end dates; unknown model reports tokens and no cost
-- [ ] Price cached input at its multiplier, not as free
-- [ ] Include reasoning tokens at the output rate
-- [ ] Accumulate usage **per turn**, not once at the end: it survives a failed run, and `service_tier` is per request
-- [ ] Price each turn at the `service_tier` it *reports* — priority traffic downgraded to standard bills at standard
-- [ ] Register `@hooks.on_compaction` and count compactions; a compaction rewrites the prefix and is the likeliest explanation for a low cache rate
+- [x] Rate table with promotional end dates, cited to the Vertex page with a verification date; unknown model **or tier** reports tokens and no cost
+- [x] Cached input priced at its multiplier (0.1x), never as free
+- [x] Reasoning tokens at the output rate — confirmed by primary source, which prices "response and reasoning" as one line
+- [x] Usage accumulated per turn from cumulative snapshots. **Note: an SDK turn is one `chat()`, not one model call**, and `PostTurnArgs` carries no usage — it must be read from the conversation
+- [x] Each turn priced at the tier it reports. **The SDK's tier values are lowercase**; an uppercase table made every review report `cost unknown`
+- [x] `@hooks.on_compaction` registered and counted
 - [ ] Tighten `ModelOutputRetryConfig(max_retries=...)` and record retry counts — the default is 4 re-prompts at full context
-- [ ] Cost line in the PR comment
-- [ ] `review-cost.json` artifact
+- [x] Cost line in the review body — inside it, not as a separate comment, so the figure travels with what it priced
+- [x] `review-cost.json` uploaded on every run, `if: always()` so a stopped run still reports what it spent
 - [ ] Vertex billing labels, sanitised, failing open — **contingent on Q11**; if the SDK exposes no label surface, drop Source 2 to project-level attribution and say so plainly rather than shipping a breakdown that is always empty
 
-**Exit:** every review reports its cost, and the same figure can be found in the billing export.
+**Exit:** every review reports its cost ✅ **met** (~$0.0447 measured), and the same figure can be found in the billing export 🔴 **not met — no billing export exists on this project**.
+
+## M2.5 — Read diffs, not files ✅
+
+`doitbse/draft#538` — 30 files, the pull request the previous reviewer failed on
+with `400: input token count exceeds 1048576`. Ours did not hit that wall; it hit
+a different one, at $1.46 a run with zero findings. See
+[`probe-results.md`](probe-results.md).
+
+- [x] **`view_diff(path)` tool** returning the changed hunks for one file, byte-capped. For that PR: 2,799 bytes against a *wrong* 131,072 — the cap reads to line 3,113 and the change is at line 13,329
+- [x] **Diff size in the prompt seed**, so a generated artefact is recognisable without opening it. "Do not review generated files" is unactionable when reading the file is the only way to tell
+- [x] **`compaction_threshold` set**, which M1 left unset. With diff-first reading, a run that died at $1.46 now completes at ~$0.30. The value is a first guess; M5 measures it
+- [x] **`SearchPath` documented.** `search_directory` requires it, it appears nowhere in the SDK surface, and omitting it *terminates the session* rather than returning a correctable error. Hit 4 of 7 runs before the fix
+- [x] **Named contract passes — the finding of this milestone.** Asked to "review this pull request" the reviewer surfaced **0 of 4** known defects, under a strict precision bar, under a loose one, and at four times the reasoning budget. Asked three named structural questions it surfaced **3–4 of 4**
+- [x] **A judging step.** The passes describe rather than decide, and annotate real defects "by design" when left to rule on their own
+- [x] **The runner posts, the agent does not.** Reverses M1's incremental MCP posting: the agent invented a `create_pending` method, tripped "only one pending review per pull request" on partial failures, and duplicated comments. One API call from structured findings cannot do any of those — and gives M5 records matched on location rather than wording
+- [x] **Gate on triviality.** A single file with ≤3 changed lines, or a PR with no reviewable diffs, is skipped with a stated reason before any model call
+- [x] **Incomplete passes excluded, never counted as clean** — Q8: a budget stop returns empty text that reads exactly like "no findings"
+- [x] **Precision instructions from Anthropic's `code-review` plugin** ([`prior-art.md`](prior-art.md)). Measured to have **no effect on recall by themselves**; what mattered was naming the contract question
+- [x] ~~**Batch the review by file group.**~~ **Measured and rejected:** 0/4 at $0.70 against 0/4 at $0.39. The batch holding both relevant files returned `NO FINDINGS`, refuting the scope hypothesis that motivated it
+
+**Exit:** a real 30-file pull request reviewed to completion, with findings, inside a sane budget. ✅ **Met** — completes at ~$0.30, surfaces 3–4 of 4 known defects, reports one plus a defect the reference reviewer missed.
+
+⚠️ **Quality beyond that is unmeasurable until M5.** Run-to-run variance now exceeds the interventions being tested: identical prompts produced 20,012 then 9,912 characters, and 4/4 then 3/4 surfaced, with no code change. Every number here is a single sample on one pull request.
 
 ## M3 — A dollar ceiling
 
@@ -128,7 +151,7 @@ Evidence for every closed row is in [`probe-results.md`](probe-results.md), repr
 | Q7 | Does a failed run really report zero tokens? | M2 | ✅ **Closed.** A hard failure raises `AntigravityConnectionError`; it does not silently report 0. Catch it and record `null` |
 | Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | ✅ **Closed — yes to both.** A stop leaves a `PENDING` review with 0 visible comments; the runner submits it with one `POST /reviews/{id}/events`. Runner-owned publication is proven necessary and cheap |
 | Q9 | Does `skills_paths` inject frontmatter unconditionally? | M4 | ✅ **Closed.** A skill's *body* rule was applied to an unrelated prompt with no discovery step. Untested at scale |
-| Q10 | Do Vertex rates match the AI Studio rates the table cites? Priority and flex tiers? | ~~M2 exit~~ | ⚠️ **No longer blocking.** Headline rates corroborate across sources ($0.75/$3.75 promo, $1.50/$7.50 standard); the Vertex page itself resisted three fetch attempts. Every probe call reported `STANDARD`, and `PRIORITY`/`FLEX` are opt-in, so the existing *unknown → tokens, no cost* rule covers them. Verify the Vertex SKU list before quoting a figure externally |
+| Q10 | Do Vertex rates match the AI Studio rates the table cites? Priority and flex tiers? | ~~M2 exit~~ | ✅ **Closed 2026-08-20 from the primary source.** The Agent Platform page finally resolved: rates match ($0.75/$3.75 intro to 2026-12-31, $1.50/$7.50 after, cached at 0.1x). **Priority and flex ARE published**, correcting the note below. Non-global endpoints cost ~10% more. Superseded detail: Headline rates corroborate across sources ($0.75/$3.75 promo, $1.50/$7.50 standard); the Vertex page itself resisted three fetch attempts. Every probe call reported `STANDARD`, and `PRIORITY`/`FLEX` are opt-in, so the existing *unknown → tokens, no cost* rule covers them. Verify the Vertex SKU list before quoting a figure externally |
 | Q11 | **Any SDK surface for per-request billing labels?** | M2 Source 2 | ✅ **Closed — no.** No `labels` field on `LocalAgentConfig` (25 fields), none on `GeminiModelOptions` (`thinking_level`, `service_tier` only), and no label/tag field anywhere in `types`. **Source 2 is not implementable as designed** |
 | Q12 | Which single-shot reviewer is the baseline, on which fixtures? | M5 | A decision, not a discovery. Make it when M5 starts |
 | Q13 | Incremental MCP posting, `response_schema`, or `finish_tool_schema_json`? | M1 exit | ✅ **Decided — incremental MCP + runner-owned submit.** Q8 shows the partial work survives and is recoverable; a budget stop returns empty text, so no single-response path can match that |

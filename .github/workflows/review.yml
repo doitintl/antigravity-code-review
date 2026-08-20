@@ -118,6 +118,14 @@ jobs:
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run python -m antigravity_code_review.review
 
+      - name: Upload the cost artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: review-cost
+          path: review-cost.json
+          if-no-files-found: warn
+
   skipped:
     needs: gate
     if: needs.gate.outputs.run != 'true' && needs.gate.outputs.reason != ''

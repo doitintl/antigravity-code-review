@@ -32,7 +32,16 @@ def format_file_line(entry: dict[str, Any]) -> str:
     deletions = entry.get("deletions") or 0
     sha = entry.get("sha") or "-"
 
-    line = f"- {path} ({status}, +{additions}/-{deletions}, {sha})"
+    # Patch size is carried so the agent can triage before opening anything.
+    # Without it a 2.9 MB generated artefact is indistinguishable from a
+    # forty-line source file, and the agent opens both.
+    patch = entry.get("patch")
+    if patch is None:
+        diff_note = "no diff available — too large to review"
+    else:
+        diff_note = f"diff {len(patch):,}B"
+
+    line = f"- {path} ({status}, +{additions}/-{deletions}, {diff_note}, {sha})"
 
     previous = entry.get("previous_filename")
     if previous:
@@ -66,8 +75,11 @@ def format_seed(pr: dict[str, Any], files: list[dict[str, Any]]) -> str:
     lines += [
         "",
         (
-            "File contents are deliberately not included. Read what you need with "
-            "view_file; it is byte-capped and will tell you when it truncates."
+            "File contents are deliberately not included. Use view_diff to see "
+            "what changed in a file — that is what you are reviewing. Use "
+            "view_file only when you need surrounding context the diff does not "
+            "show; it is byte-capped and reads from the top of the file, which "
+            "for a large file is unlikely to be where the change is."
         ),
     ]
     return "\n".join(lines)

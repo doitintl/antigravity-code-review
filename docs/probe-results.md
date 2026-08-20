@@ -603,6 +603,727 @@ M5 should instead measure:
 
 And fixtures need a reachability check before a defect counts as planted.
 
+## ✅ Q10 closed — Vertex rates, from the primary source
+
+The Agent Platform pricing page resisted three fetch attempts during M0, which
+is why Q10 stood open with the rates corroborated only from AI Studio. It
+resolved on 2026-08-20.
+
+**The figures were right.** $0.75/$3.75 introductory through 2026-12-31,
+$1.50/$7.50 from 2027-01-01, cached input at one tenth. The table did not need
+correcting; it needed the citation it was missing.
+
+The primary source corrected two things around it:
+
+- **Priority and flex rates *are* published.** M0 recorded that "only standard
+  rates are published" and concluded unknown tiers fall under the unknown-rate
+  rule. All three tiers are listed, so all three are priced.
+- **Region changes the rate.** Non-global endpoints cost ~10% more. This project
+  pins `location="global"`, so the assumption is now explicit rather than lucky.
+
+It also confirms from primary source that output covers **"response and
+reasoning"** — thinking tokens billing at the output rate is now a citation
+rather than an inference from a docstring.
+
+## M2 — what a review actually costs
+
+Measured on the fixture PR, `0.1.12`, `gemini-3.7-flash`, global endpoint:
+
+```
+Reviewed in 1 turn · 79,074 in (57% cached) · 4,163 out · 11 tool calls · ~$0.0447
+```
+
+**About 4–7 cents per review**, not the ~$0.18 estimated in M1. That earlier
+figure was wrong twice over: it priced at the standard rate rather than the
+introductory one, and it ignored caching entirely. Both errors pushed the same
+way, which is what an uncited estimate tends to do.
+
+### Three bugs the real runs found
+
+**The service-tier values are lowercase.** The SDK emits `ServiceTier.STANDARD`
+with value `"standard"`; the rate table used `"STANDARD"`, so the lookup never
+matched and **every review reported `cost unknown`**.
+
+That it surfaced at all is the unknown-means-unknown rule earning its place. Had
+the table fallen back to a neighbouring rate, every review would have been
+silently mispriced and the figure would have looked entirely plausible. The rule
+was written as a principle in `cost-tracking.md`; this is it working as an
+incident.
+
+**`PostTurnArgs` carries no usage.** It has exactly one field, `response_text`,
+verified against the proto descriptor. A hook-based design looking for per-turn
+usage in the payload finds nothing and silently records nothing. Usage has to be
+read from the conversation, which only exists after the `Agent` is constructed —
+after the hooks are registered.
+
+**A "turn" is not a "model call".** The cost line reported *"1 model call"* for a
+review that made eleven tool calls. `post_turn` fires once per `chat()`, and a
+review spends many model calls inside a single turn working its tool loop. The
+token totals are cumulative and were always right; the label was false, and
+false in the direction that makes a reviewer look cheaper than it is. **The SDK
+exposes no per-model-call count** — `trajectory_usages` is per trajectory.
+
+### 🔴 The exit criterion is half met
+
+*"Every review reports its cost"* — **met**. Cost line on the review, and
+`review-cost.json` uploaded on every run including stopped ones.
+
+*"…and the same figure can be found in the billing export"* — **not met**.
+`sascha-playground-doit` has **no billing-export dataset**; `bq ls` across 200
+datasets finds nothing billing-related. Without an export there is no
+independent figure to reconcile against.
+
+This is recorded as unmet rather than waved through, because the whole argument
+for two sources is that self-reported cost is unverified cost. `cost-tracking.md`
+is blunt about it: reporting your own cost without an independent check is how a
+number everyone quotes turns out to have been wrong for a month — and this track
+has already produced two wrong numbers that looked fine.
+
+**To close it:** enable a BigQuery billing export on the billing account, wait
+for a review to appear in it, and compare. Until then the figure is arithmetic
+from a cited rate, which is better than a guess and is not the same as verified.
+
+## 🔴 The reviewer does not survive a real pull request
+
+First test outside the fixture: `doitbse/draft#538`, 30 changed files,
++715/-30, in a 2,446-file Next.js repository. **The same pull request the
+previous reviewer failed on**, which makes it a clean comparison.
+
+### What the old reviewer did
+
+```
+400 INVALID_ARGUMENT: The input token count exceeds the maximum
+number of tokens allowed 1048576
+```
+
+It attached codebase context — 2,314 files, 21.7 MB against a 1.5 MB limit —
+fell back to "Sparse Context Mode", and still blew the window. This is the
+failure quoted in [`design.md`](design.md) as the reason this project exists.
+
+### What ours did
+
+Not that. Something else, twice, at $1.51 and $1.46 a run:
+
+```
+stop: MAX_INPUT_TOKENS_EXCEEDED
+7,575,648 in (85% cached) · 32,714 out · 87 tool calls · zero findings
+```
+
+### The byte cap works. That part is proven
+
+`docs/openapi.json` in this PR is **2,947,014 bytes** — byte for byte the file
+`design.md` uses as its motivating example. This is the real case, not a
+reconstruction of it.
+
+| | tokens if read |
+|---|---|
+| `openapi.json`, uncapped | **~736,000** |
+| `openapi.json`, capped at 131,072 bytes | ~33,000 |
+| the other 29 changed files | ~147,000 |
+| **all 30 files, uncapped** | **~884,000** — inside a 1M window, with nothing to spare |
+| **all 30 files, capped** | **~180,000** |
+
+**The cliff is gone.** One generated file no longer ends the review. That was the
+project's founding claim and it holds.
+
+### What kills it instead: accumulation across turns
+
+The agent behaves correctly. It calls `find_file` to orient, then `view_file`
+once per changed file. The trace shows nothing wasteful.
+
+But **every file it reads stays in context for every later turn.** Thirty files
+of ~180k tokens, resent across ~30 turns, is ~5M cumulative — and the observed
+figure was 7.5M. The cost is quadratic in files read, and nothing in the
+configuration bounds it.
+
+`CapabilitiesConfig(compaction_threshold=...)` is the lever, and **M1 never set
+it**. `design.md` names it as the only thing that bounds context growth, and the
+implementation left it at whatever the SDK defaults to.
+
+### Why the fixture never caught this
+
+Four files. A two-file diff gives the agent nothing to accumulate and no reason
+to explore. **The M1 exit criterion was met by a pull request small enough that
+the failure mode could not occur** — which is the argument for M5 restated as an
+incident, and an argument for fixtures that resemble real work.
+
+### What this changes
+
+- **M3 must bound context growth, not just spend.** A dollar ceiling that stops
+  a runaway after $1.50 is not the same as a reviewer that does not run away.
+- **`compaction_threshold` belongs in the configuration**, with a measured value.
+- **Per-review cost is not flat.** The 4-7 cents measured on the fixture is a
+  two-file number; this PR cost twenty times that and produced nothing.
+- **A large PR may need splitting** — reviewing in batches, or per directory —
+  rather than one session holding thirty files at once.
+
+Recorded as a failure rather than filed as a bug, because the reviewer is
+working as designed and the design is what needs to change.
+
+## 🔴 The reviewer reads files. It should be reading diffs
+
+Following the `doitbse/draft#538` failure, one question turned out to matter
+more than the accumulation problem: **why did the agent open a 2.9 MB generated
+file at all?**
+
+| | |
+|---|---|
+| `docs/openapi.json` | 2,947,014 bytes, 74,560 lines |
+| the actual change | **+30 lines, patch 2,799 bytes** — 0.09% of the file |
+| where the change is | **line 13,329** |
+| what the 131,072-byte cap reads | lines 1 – **3,113** |
+
+**The agent read the wrong 128 KB.** It spent roughly 33,000 tokens, never saw
+the changed lines, and the truncation marker correctly told it not to reason
+about the part it could not see. On that file it could not have produced a
+review no matter what it did.
+
+The byte cap is doing its job — it prevents the crash. It cannot make a
+head-of-file read relevant to a change two thirds of the way down.
+
+### Three gaps that compound
+
+1. **The seed carries no size signal.** `docs/openapi.json (added, +30/-0, sha)`
+   is indistinguishable from a forty-line source file. The agent has nothing to
+   triage on, so it opens everything.
+2. **`view_file` reads from the top.** For a change at line 13,329 the head is
+   exactly the wrong slice, and the agent has no way to know where to look.
+3. **The patch exists and is never offered.** GitHub returns it per file, it is
+   2,799 bytes, and it contains precisely the thing under review — **1,053×
+   smaller than the file**.
+
+### The correction
+
+[`design.md`](design.md) is right that diff hunks must not go **in the seed** —
+attaching them for every file is what produced the original 1M-token failure.
+But the conclusion drawn from that was too broad. The fix is not "no hunks
+anywhere"; it is **hunks on demand, through a tool**.
+
+That is the pull-context principle exactly. The current design applies it to file
+bodies and forgets the diff, which leaves the agent reading whole files to find
+changes it was never shown.
+
+**Proposed:** a `view_diff(path)` tool returning the changed hunks for one file,
+byte-capped like `view_file`. For this pull request that is 2,799 bytes instead
+of 131,072 — and unlike the 131,072, it contains the change.
+
+**Also proposed:** carry file size in the seed, so a generated artefact can be
+recognised without opening it. The instruction "do not review generated files"
+is unactionable when the only way to tell is to read the file.
+
+### Why none of this surfaced earlier
+
+The fixture's oversized file was a flat 582 KB JSON array with the "change"
+being the whole file, so a head read was representative and the cap looked
+sufficient. A real generated file gets a small edit in the middle, which is the
+case that breaks it. **The fixture tested the cap, not the thing the cap was for.**
+
+## M2.5 — the cost problem is fixed; recall is not demonstrated
+
+Three changes after the `draft#538` failure: a `view_diff` tool serving the
+patches the collector already fetched, diff size carried in the seed,
+`compaction_threshold` set, and system instructions rebuilt around the precision
+structure in Anthropic's `code-review` plugin.
+
+### The cost and completion problem is solved
+
+Same pull request, same repository, before and after:
+
+| | before | after |
+|---|---|---|
+| input tokens | 7,575,648 | **2,111,714** |
+| tool calls | 87 | 88 |
+| stop reason | `MAX_INPUT_TOKENS_EXCEEDED` | **completed normally** |
+| cost | $1.46 | **$0.39** |
+
+It no longer runs out of context on a 30-file pull request. The first diff-only
+run was cheaper still — 269,566 tokens at $0.11 — before cross-file reading was
+encouraged, which is the honest cost of following references.
+
+### Recall is not
+
+At the commit `claude[bot]` reviewed, on the same 21 changed files, ours reported
+**no findings**. `claude[bot]` reported four, all of them real enough that the
+next commit on the branch is titled *"fix(website): address PR #538 review
+findings"*.
+
+**A methodology error nearly buried this.** The first comparison ran against the
+pull request *head*, which is two fix commits later than the code
+`claude[bot]` saw — so "we found nothing they found" was measuring different
+source. Re-running at `5349acd3` gave the same result, so the gap is real, but
+the first version of this comparison was not evidence of it.
+
+### What does not explain it
+
+- **Not the context ceiling.** The run completes with room to spare.
+- **Not missing repository conventions.** The repo has a 9.5 KB `CLAUDE.md`, and
+  `claude[bot]`'s prompt does launch dedicated compliance agents against it — but
+  the convention behind its sharpest finding, that a new field must be routed
+  through `stagedFields` rather than `directFields`, **is not in `CLAUDE.md`**. It
+  derived that from reading the PUT handler.
+- **Not a refusal to look.** 88 tool calls, and the model reports having followed
+  references across HubSpot APIs, schema validation and the blog renderer.
+
+### What might
+
+- **Over-suppression.** The instructions now carry an explicit do-not-flag list
+  and "if you are not certain an issue is real, do not flag it". M1 already
+  measured this reviewer dropping a marginal finding whenever its list ran short.
+  A precision bar tuned for a different model may simply be silencing it.
+- **No verification pass.** Anthropic's design *generates* findings with one set
+  of agents and *confirms* them with another. Ours does both in one pass, where a
+  strict bar cannot distinguish "checked and dismissed" from "never formed".
+- **Depth.** `claude[bot]`'s findings require holding a component, a query
+  function and a schema comment together, then reasoning about intent. That is a
+  harder task than pattern-matching a diff, and the models are not the same.
+
+### The next diagnostic, and why
+
+Point the reviewer at one known finding and ask directly. That distinguishes
+**cannot see it** from **saw it and suppressed it**, which have opposite fixes:
+the first needs better reasoning or context, the second needs a looser bar. Until
+that is run, the cause is a hypothesis and is recorded as one.
+
+**What can be claimed today:** the reviewer completes on a real pull request
+inside a sane budget, which it could not do before. **What cannot:** that it
+finds anything worth reading there.
+
+## ✅ Why the reviewer found nothing: scope, not capability
+
+The diagnostic that settles it. Three conditions on the same code, at the commit
+`claude[bot]` reviewed.
+
+| condition | scope | result |
+|---|---|---|
+| full review, strict bar | 21 changed files | **no findings** |
+| pointed question, strict bar | 2 files | **found it exactly**, with line references |
+| open question, strict bar | 2 files | **found it** — plus a bug `claude[bot]` did not report |
+| open question, **loose** bar | 2 files | **found it** |
+
+**The model can do the reasoning.** Asked "for which page types is
+`gatedContentTag` read, and for which can an editor set it — are those the same
+set?", it answered precisely: read for `landing` and `hubspot-landing` only, and
+settable on all seven. That is `claude[bot]`'s finding, independently reproduced.
+
+**The precision bar is not the cause.** The strict instructions — do-not-flag
+list, "if you are not certain, do not flag it" — found it at two files. Loosening
+to "err on the side of reporting" changed nothing about whether it was found.
+
+**The variable is scope.** Two files: found. Twenty-one files: silent.
+
+### A trap this diagnostic fell into first
+
+The first two conditions returned **empty text**, which reads exactly like "no
+findings". They were budget stops — `MAX_OUTPUT_TOKENS_EXCEEDED` against a 3,000
+cap set for economy. Q8 predicted this precisely: *a budget stop preserves usage
+and returns empty text.*
+
+**An empty review is indistinguishable from a clean review** unless the stop
+reason is checked. The runner does check it, and the review body says so — but a
+diagnostic written in haste did not, and drew the opposite conclusion for two
+runs. Anything reading these results must check `stop_reason` first.
+
+### What this implies for the design
+
+Anthropic's `code-review` plugin fans out to four agents with narrow mandates and
+then validates each finding. Read against this measurement, **narrow scope is not
+a parallelism optimisation — it is the mechanism that makes findings appear at
+all.**
+
+We cannot copy the fan-out: subagents fail on Vertex and escape `BudgetConfig`
+(Q4). But the property that matters is scope per pass, not parallelism, and that
+is reachable sequentially — **several small sessions instead of one large one.**
+
+That also fixes the accumulation problem by construction. A session over three
+files cannot grow the context that a session over thirty does, so batching
+addresses recall and cost with the same change.
+
+**Next:** batch by file group and measure recall against `draft#538` at
+`5349acd3`, where four findings are known and one is now independently
+reproduced.
+
+## The batching experiment — baseline, and the bar it must clear
+
+Recorded before the result, so the bar cannot move afterwards.
+
+**All measurements on `doitbse/draft#538` at `5349acd3`** — the commit
+`claude[bot]` reviewed, 21 changed files, four known findings:
+
+| # | file | defect |
+|---|---|---|
+| 1 | `site-page-editor-shell.tsx` | `gatedContentTag` editable on all seven page types, read for only two |
+| 2 | `schemas/site-page.ts` | the field lands in `directFields`, bypassing the staging approval gate |
+| 3 | `lib/landing-page-utm.ts` | `utm_campaign` uses the bare leaf slug, which is not unique across parent paths |
+| 4 | `lib/landing-page-sales-notification.ts` | fires on every publish, not the first, so republishing re-announces a page live for weeks |
+
+None of the four is pattern-matchable. Every one needs either a second file or
+domain knowledge of the flow.
+
+### Baseline — single session, everything tried
+
+| variant | scope | recall | cost |
+|---|---|---|---|
+| strict bar | 21 files | **0/4** | $0.39 |
+| loose bar | 21 files | **0/4** | — |
+| `thinking_level=HIGH` (4x reasoning) | 21 files | **0/4** | ~$0.60 |
+| strict bar | **2 files** | **found #1** | ~$0.05 |
+| loose bar | **2 files** | **found #1** + a defect `claude[bot]` missed | ~$0.05 |
+
+Instructions, precision bar, and reasoning budget were each varied and none
+moved it. Scope moved it every time.
+
+### The bar
+
+Batching is adopted **only if it beats 0/4 at $0.39**. Nothing else about the
+reviewer changes — same model, same instructions, same tools — so any difference
+is attributable to scope per pass.
+
+A result of 1/4 would be real but thin: finding #1 is already known reachable at
+two-file scope, so recovering only that shows batching works and little else.
+**2/4 or better means it generalises**, because #2, #3 and #4 have never been
+found by this reviewer under any condition.
+
+If it does not clear the bar, it does not ship, and the entry below says so.
+
+## 🔴 Batching failed the bar. It does not ship
+
+| | recall | cost |
+|---|---|---|
+| baseline, single session, 21 files | 0/4 | **$0.39** |
+| **batched, 6 sessions of 4 files** | **0/4** | **$0.70** |
+
+No better on recall, 79% worse on cost. Per the bar recorded before the run, it
+is not adopted. It stays in `probe/` as a measurement.
+
+### It also refutes the conclusion it was built on
+
+**Batch 3 contained `site-page-editor-shell.tsx` and `gated-content-cta.ts`** —
+the exact pair where the diagnostic found the defect three times out of three. It
+returned `NO FINDINGS`.
+
+So *"recall is a function of scope per pass"* was **wrong**, and the earlier
+entry saying otherwise was wrong. The diagnostic that produced it was confounded:
+every condition that found the defect also **named the feature** and used **only
+the two files that mattered**. Scope was varied, but never alone.
+
+### Two things the follow-up separated
+
+**The escape hatch was mine, and it mattered.** The batch instructions said *"if
+you find nothing, say exactly NO FINDINGS"* — and all six batches did, to the
+character. Removing that line, same four files, produced real findings instead
+of silence. **Offering a clean way to say nothing makes saying nothing the path
+of least resistance.** That is a defect in how the probe was written, not in the
+reviewer.
+
+**Naming the feature did not help.** With the escape hatch gone and the
+`gatedContentTag` feature described in the prompt, it still did not find the
+page-type mismatch.
+
+### What actually distinguishes found from missed
+
+Across every run so far, one pattern holds:
+
+- **Local defects it finds reliably.** The `sortOrder` `NaN` — `a.sortOrder -
+  b.sortOrder` on an optional field — was reported in four separate runs, at
+  two-file and four-file scope, under strict and loose bars. **`claude[bot]` did
+  not report it.**
+- **Cross-file contract mismatches it does not find spontaneously.** All four
+  known findings are of this kind: a field settable in one place and read in
+  another, a field missing from an allowlist, an identifier assumed unique that
+  is not, a notification assumed once-only that is not. It found one of them —
+  **only** when asked *"for which page types is this read, and for which can it
+  be set — are those the same set?"*
+
+The distinction is not scope, and not the precision bar. It is whether the
+comparison has been **posed**. Given a hypothesis to test, the model tests it
+correctly. Left to generate its own hypotheses across a diff, it inspects each
+change locally and reports what is wrong *within* it.
+
+### Where that leaves the design
+
+Anthropic's plugin does not solve this by scope either — it solves it by giving
+each agent a **mandate**: this one checks CLAUDE.md compliance, that one hunts
+bugs in the introduced code. A mandate is a hypothesis generator.
+
+So the next thing worth testing is not smaller batches but **named review passes**
+— "for every field this PR adds, find where it is read and where it is written,
+and report any asymmetry" — which is the shape of three of the four known
+findings. That is a checklist of contract questions, not a smaller window.
+
+Untested. Recorded as the next hypothesis rather than a conclusion, since the
+last one did not survive contact.
+
+## ✅ Contract passes beat the baseline on both axes
+
+Instead of "review this pull request", ask three named structural questions over
+the whole diff. Not batched — batching measured worse.
+
+| approach | recall | cost |
+|---|---|---|
+| single session, 21 files | 0/4 | $0.39 |
+| batched, 6 x 4 files | 0/4 | $0.70 |
+| **contract passes** | **2/4** | **$0.26** |
+
+**Better recall at two thirds the cost**, and achieved with **one of the three
+passes crashed** — the one targeting finding #3.
+
+The passes:
+
+1. *For every field this PR adds: where can it be written, where is it read, are
+   those the same conditions?* → findings #1, #2
+2. *For every value used as an identifier: what uniqueness is assumed versus
+   guaranteed?* → finding #3
+3. *For every side effect added: can it fire more than once for the same
+   subject?* → finding #4
+
+### The instrument was validated first
+
+Fed `claude[bot]`'s own review text, the scorer returns **4/4**. A scorer that
+could not find these in the reference would have reported a false 0/4 for
+everything — which is the class of error this investigation has already made
+twice.
+
+### 🔴 "Found" means surfaced, not flagged
+
+This qualification matters more than the number. On finding #1 the report says:
+
+> **Condition difference (by design)**: the field can be set on any `SitePage`,
+> but `findGatedContentCta` only reads it where `status == 'published'` and
+> `pageType in ['landing', 'hubspot-landing']`.
+
+That is exactly `claude[bot]`'s finding — **and it is labelled "by design" and
+dropped.** The asymmetry was identified correctly and then judged not to be a
+defect.
+
+So the contract passes fix the half that was actually broken: the model now
+*performs the comparison* instead of inspecting each change locally. What it does
+not yet do is *judge* the result. A surfaced asymmetry marked "by design" never
+becomes a review comment.
+
+That is a tractable gap, and it is the mirror of Anthropic's step 5. They
+generate findings and validate them to remove false positives; we surface facts
+and need a pass to decide which are defects. **Same separation, opposite
+direction.**
+
+### 🔴 An invalid tool call kills the session
+
+Pass 2 died on:
+
+```
+AntigravityExecutionError: model output error:
+invalid tool call error (invalid_signature) SearchPath is required
+```
+
+`search_directory` requires a `SearchPath` argument that appears nowhere in the
+SDK surface — `GrepSearchToolConfig` exposes only `enabled`. Omitting it
+**terminates the whole session** rather than returning a tool error the model
+could correct. It has now hit 4 of 7 runs, and it explains the "internal error in
+running grep command" seen in the first `draft#538` attempts.
+
+`ModelOutputRetryConfig(max_retries=1)` did not save it, because this is not a
+schema-validation retry — it is fatal.
+
+Fix by naming the required parameter in `system_instructions`, the way the MCP
+casing was fixed. Dropping the tool is the wrong answer: following references is
+the capability the contract passes depend on.
+
+### What ships
+
+The contract-pass structure earns adoption on the measurement. Two things must
+land with it: the `SearchPath` parameter documented, and a judging step so a
+surfaced asymmetry is decided rather than annotated.
+
+**And the standing caveat: this is one pull request with four findings.** 2/4 on
+n=1 is a reason to build M5's fixture set, not a claim that the reviewer works.
+
+## Contract passes + judging: surfacing solved, reporting is the bottleneck
+
+Second measured run, after documenting `SearchPath` and adding a judging step.
+
+| | run 1 | run 2 |
+|---|---|---|
+| passes completed | 2 of 3 (one crashed) | **3 of 3** |
+| findings **surfaced** | 2/4 | **4/4** |
+| findings **reported as defects** | n/a | **1/4**, plus one novel |
+| cost | $0.26 | $0.34 |
+
+**Documenting `SearchPath` fixed the crash**, pass 2 ran, and with it every one of
+the four known findings was surfaced. The passes now describe all of them.
+
+**The judge then reported two defects**, one of which is finding #1, stated
+correctly and in its own words:
+
+> An editor can set a gated content tag on standard or documentation pages, but
+> it will never match or render an in-article CTA because CTA resolution only
+> queries landing pages.
+
+Its second defect is **novel** — a missing `BU_SALES_SLACK_CHANNEL_ENV` mapping
+for the Attribute business unit, which neither `claude[bot]` nor any earlier run
+reported.
+
+Findings #2, #3 and #4 were surfaced by the passes and dropped by the judge.
+
+### 🔴 The scorer produced a false negative. Third measurement error
+
+The run reported **0/4 reported**. The correct figure is **1/4 plus one novel**.
+
+The scorer greps for `"page type"`; the judge wrote `"pages"`. It was validated
+against `claude[bot]`'s phrasing and then applied to a different writer, so
+paraphrase defeated it.
+
+That is the third time an instrument, not the reviewer, produced the headline
+number in this investigation:
+
+1. comparing against the wrong commit, two fix commits after the reviewed code;
+2. a budget stop returning empty text, read as "no findings";
+3. keyword scoring failing on paraphrase.
+
+**Every one made the reviewer look worse than it was.** A keyword scorer cannot
+measure recall over free text, and the fixture work in M5 needs a scorer that
+compares meaning — or findings emitted in a structured form that can be matched
+on file and line rather than wording.
+
+### Where the bottleneck moved
+
+It has moved twice, and both moves were real progress:
+
+1. **Not performing the comparison** — fixed by naming the contract question.
+   Surfacing went 0/4 → 2/4 → 4/4.
+2. **Performing it and not reporting it** — the current bottleneck. The judge
+   sees four described asymmetries and calls one a defect.
+
+The judge is one prompt with no tools; it cannot check the codebase to decide
+whether an asymmetry is guarded. Giving it the same tools the passes have is the
+obvious next thing to try, and is untested.
+
+### What can be claimed
+
+The reviewer now **finds** all four known findings, in the sense of describing
+each correctly. It **reports** one of them plus one nobody else found. The
+remaining gap is a judgement problem, not a perception problem, which is a
+better problem to have and a narrower one to fix.
+
+**Still one pull request with four findings.** Every number above is n=1.
+
+## 🛑 Stop tuning: the measurement is now noisier than the interventions
+
+Three runs of the contract-pass reviewer on the same pull request, at the same
+commit, with the same four known findings.
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| change | — | `SearchPath` documented, judge added | judge given tools |
+| passes completed | 2 of 3 | 3 of 3 | 3 of 3 |
+| **surfaced** | 2/4 | **4/4** | **3/4** |
+| **reported** | — | 1/4 + 1 novel | **1/4** |
+| cost | $0.26 | $0.34 | $0.31 |
+
+**Giving the judge tools changed nothing measurable.** Reported held at 1/4, cost
+moved by three cents, and the novel defect from run 2 disappeared.
+
+### The variance is larger than the effects
+
+Between run 2 and run 3, with **no change to the passes at all**:
+
+- pass 1 output: 20,012 chars → 9,912 chars
+- findings surfaced: 4/4 → 3/4
+
+A finding that was surfaced in one run was not surfaced in the next, from an
+identical prompt against identical code. M1 already measured this reviewer's
+non-determinism and found the marginal finding dropping off a short list; this is
+the same effect at the scale that matters.
+
+**So the last two interventions cannot be evaluated.** A change worth less than
+one finding is invisible against a ±1 finding swing, and every number in the
+table is a single sample.
+
+### What is established, and what is not
+
+**Established**, because the effects are large enough to clear the noise:
+
+- Naming the contract question works. 0/4 surfaced across every variant of "find
+  bugs" — including four times the reasoning — against 3/4 or 4/4 once the
+  comparison is posed. That is the finding of this whole investigation.
+- Documenting `SearchPath` fixed a fatal crash, reproducibly, across three runs.
+- Diff-first plus `compaction_threshold` took a run that died at $1.46 to one
+  that completes at ~$0.30.
+
+**Not established**: whether the judge helps, whether tools help the judge,
+whether 1/4 or 2/4 is the real reporting rate, and whether any of it generalises
+past this one pull request.
+
+### The rule this run bought
+
+**No further tuning against n=1.** Three separate times an instrument produced
+the headline number here rather than the reviewer, and now run-to-run variance
+exceeds the interventions being tested. Continuing would be fitting to noise, and
+doing it carefully would not make it less so.
+
+M5 is no longer a later milestone. It is the precondition for any further claim
+about review quality, and it needs three things:
+
+1. **Several pull requests** with known findings, not one.
+2. **Repeated runs per configuration**, since one sample cannot see a ±1 swing.
+3. **Structured findings** — file, line, claim — matched on location rather than
+   wording. Keyword scoring over free text has already produced one false zero.
+
+## M2.5 shipped: the port works, and the judge is now the ceiling
+
+The contract-pass structure moved from `probe/` into `review.py`, and running it
+end to end immediately found something no unit test would have.
+
+### Contract questions alone lost local recall
+
+On the fixture — seven planted defects, mostly local — the ported reviewer found
+**2**, against the general reviewer's **4**. It lost a SQL injection and a
+`Decimal`/`float` mismatch, and reframed a committed API key as *"has no effect
+because the configuration key is never read"*.
+
+That last one is the lens showing through. A write/read asymmetry pass pointed at
+a credential sees dead configuration, because asymmetry is the only question it
+was asked. **Contract questions add cross-file recall; they do not replace asking
+whether the changed code is simply wrong**, and shipping them as a replacement
+traded one blindness for another.
+
+Fixed by adding a fourth pass that runs first and asks the plain question — will
+this compile, will it produce a wrong result, is it a security defect, does it
+contradict a convention here — with an explicit instruction not to describe a
+credential in source as unused configuration.
+
+**Caught only because the port was run rather than assumed correct from its
+parts, and only because the fixture exercises different defect classes than
+`draft#538`.** Optimising against one pull request regressed the other, which is
+the n=1 trap arriving on schedule.
+
+### The judge is now the limiter
+
+| run | passes | reported |
+|---|---|---|
+| contract only | 3 | hardcoded key · overdraft bypass |
+| + local-defect pass | 4 | **SQL injection** · **`Decimal`/`float` TypeError** |
+
+More passes surfaced more, and **the count reported stayed at 2 while the
+identity of the 2 changed completely.** None of the four runs reported the same
+pair.
+
+This is M1's measurement reappearing one stage later. There, the reviewer dropped
+the marginal finding whenever its list ran short; here, the judge selects roughly
+two defects from whatever the passes surface. The bottleneck has moved from
+perceiving to describing to judging, and each move was progress.
+
+Cost improved while this happened: **$0.0751 with four passes**, against $0.1240
+with three — a shorter, less exploratory run.
+
+### Not tuning this
+
+The rule from the previous entry applies. Four runs, four different pairs, one
+fixture: the variance is larger than any change worth making, and picking a judge
+prompt that reports four instead of two would be fitting to noise.
+
+**This is an M5 question**, and it is now the sharpest one the harness has to
+answer: given a set of surfaced properties, how many become reported defects, how
+stable is that selection, and does it depend on the prompt or on the model.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

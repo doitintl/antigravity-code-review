@@ -1,0 +1,13 @@
+{
+  "track_id": "m2-cost_20260820",
+  "title": "M2: Cost tracking",
+  "type": "feature",
+  "status": "complete_pending_reconciliation",
+  "milestone": "M2",
+  "closes_questions": [
+    "Q10"
+  ],
+  "exit_criterion": "Every review reports its cost, and the same figure can be found in the billing export",
+  "created_at": "2026-08-20",
+  "updated_at": "2026-08-20"
+}

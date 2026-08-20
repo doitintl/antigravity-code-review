@@ -37,6 +37,10 @@ class TestToolSurface:
         """An interactive tool in unattended CI stalls waiting for nobody."""
         assert types.BuiltinTools.ASK_QUESTION not in cfg.capabilities.enabled_tools
 
+    def test_context_growth_is_bounded(self, cfg):
+        """M1 left this unset; a 30-file PR reached 7.5M cumulative input tokens."""
+        assert cfg.capabilities.compaction_threshold is not None
+
     def test_subagents_disabled(self, cfg):
         """M0: subagent tokens escape BudgetConfig, and delegation fails on Vertex."""
         assert cfg.capabilities.enable_subagents is False
@@ -67,10 +71,16 @@ class TestBudget:
         assert cfg.retry_config.model_output_retry.max_retries == 1
 
 
-class TestModelIsUnset:
-    def test_no_model_pinned(self, cfg):
-        """thinking_level is M5's first measurement axis; do not pre-empt it."""
-        assert cfg.model is None
+class TestModelPinning:
+    def test_model_is_pinned_so_the_rate_is_knowable(self, cfg):
+        """The rate table keys on the model. Unpinned means unpriceable."""
+        from antigravity_code_review.rates import FLASH, RATES
+        assert cfg.model == FLASH
+        assert FLASH in RATES
+
+    def test_thinking_level_is_still_unset(self, cfg):
+        """A separate axis from the model, and M5's to measure."""
+        assert getattr(cfg, "model_options", None) is None
 
 
 class TestIsolation:
@@ -125,9 +135,81 @@ class TestSystemInstructions:
         assert "pullNumber: 7" in cfg.system_instructions
 
     def test_spells_out_the_posting_sequence(self, cfg):
-        """The agent invented "create_pending" when left to guess."""
+        """The agent invented a tool name when left to guess the sequence."""
         assert "pull_request_review_write" in cfg.system_instructions
-        assert "create_pending" in cfg.system_instructions  # named as a thing NOT to do
+        assert "add_comment_to_pending_review" in cfg.system_instructions
+
+    def test_directs_the_agent_to_the_diff_first(self, cfg):
+        """Opening whole files to find changes is what broke draft#538."""
+        i = cfg.system_instructions.index("view_diff")
+        j = cfg.system_instructions.index("view_file")
+        assert i < j, "view_diff must be introduced before view_file"
+
+    def test_requires_every_tool_call_to_have_a_purpose(self, cfg):
+        """87 tool calls, zero findings, on the first real pull request.
+
+        Note this is deliberately NOT "do not explore" any more. A blanket ban
+        on exploring also bans following a reference out of the diff, which is
+        where the findings worth having actually live.
+        """
+        text = cfg.system_instructions
+        assert "CLEAR PURPOSE" in text.upper()
+        assert "at random" in text.lower()
+        assert "do not explore" not in text.lower()
+
+    def test_carries_an_explicit_do_not_flag_list(self, cfg):
+        text = cfg.system_instructions.lower()
+        assert "what not to flag" in text
+        for suppressed in ("pre-existing", "linter", "style", "generated files"):
+            assert suppressed in text
+
+    def test_sets_a_precision_bar(self, cfg):
+        assert "NOT CERTAIN" in cfg.system_instructions.upper()
+        assert "false positive" in cfg.system_instructions.lower()
 
     def test_tells_the_agent_not_to_submit(self, cfg):
         assert "runner submits" in cfg.system_instructions.lower()
+
+
+class TestCrossFileReasoning:
+    """The findings that matter live where changed code meets unchanged code."""
+
+    def test_directs_the_agent_to_follow_references(self, cfg):
+        text = cfg.system_instructions.lower()
+        assert "follow the references out of the diff" in text
+
+    def test_says_where_the_valuable_findings_are(self, cfg):
+        """Diff-only review finds what a linter finds."""
+        assert "linter would have caught" in cfg.system_instructions.lower()
+
+    def test_permits_checking_before_dismissing(self, cfg):
+        assert "good use of a tool call" in cfg.system_instructions.lower()
+
+
+class TestContractPasses:
+    """Contract questions add cross-file recall; they must not remove local recall."""
+
+    def test_a_local_defect_pass_runs_first(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        assert CONTRACT_PASSES[0][0] == "defects in the changed code"
+
+    def test_the_local_pass_asks_about_security(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        q = CONTRACT_PASSES[0][1].lower()
+        for topic in ("security", "credential", "query", "swallowed"):
+            assert topic in q
+
+    def test_the_local_pass_forbids_reframing_a_credential(self):
+        """The asymmetry lens called a committed API key 'unused configuration'."""
+        import re
+
+        from antigravity_code_review.config import CONTRACT_PASSES
+        normalised = re.sub(r"\s+", " ", CONTRACT_PASSES[0][1])
+        assert "do not describe it as unused configuration" in normalised
+
+    def test_the_contract_questions_survive(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        names = [n for n, _ in CONTRACT_PASSES]
+        assert "write/read asymmetry" in names
+        assert "identifier uniqueness" in names
+        assert "side-effect frequency" in names
