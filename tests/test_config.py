@@ -24,7 +24,7 @@ WRITE_TOOLS = [
 
 @pytest.fixture
 def cfg(tmp_path):
-    return build_config("p", str(tmp_path), str(tmp_path / "appdata"))
+    return build_config("p", str(tmp_path), str(tmp_path / "appdata"), "o", "r", 7)
 
 
 class TestToolSurface:
@@ -113,6 +113,17 @@ class TestSystemInstructions:
     def test_carries_exact_mcp_casing(self, cfg):
         assert "pullNumber" in cfg.system_instructions
         assert "subjectType: LINE" in cfg.system_instructions
+
+    def test_names_the_repository_so_calls_do_not_resolve_to_slash(self, cfg):
+        """A CI run failed with "Could not resolve to a Repository with the name '/'"."""
+        assert "owner:      o" in cfg.system_instructions
+        assert "repo:       r" in cfg.system_instructions
+        assert "pullNumber: 7" in cfg.system_instructions
+
+    def test_spells_out_the_posting_sequence(self, cfg):
+        """The agent invented "create_pending" when left to guess."""
+        assert "pull_request_review_write" in cfg.system_instructions
+        assert "create_pending" in cfg.system_instructions  # named as a thing NOT to do
 
     def test_tells_the_agent_not_to_submit(self, cfg):
         assert "runner submits" in cfg.system_instructions.lower()

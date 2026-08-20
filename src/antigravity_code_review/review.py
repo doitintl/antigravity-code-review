@@ -40,7 +40,8 @@ async def review(repo: str, number: int, project: str) -> int:
 
     workspace = os.getcwd()
     app_data_dir = tempfile.mkdtemp(prefix="agy-review-", dir=tempfile.gettempdir())
-    config = build_config(project, workspace, app_data_dir)
+    owner, _, repo_name = repo.partition("/")
+    config = build_config(project, workspace, app_data_dir, owner, repo_name, number)
 
     async with Agent(config) as agent:
         # Validate the MCP allowlist before the first model call. M0 recorded
