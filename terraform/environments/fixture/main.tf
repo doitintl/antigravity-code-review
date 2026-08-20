@@ -1,4 +1,4 @@
-# Root configuration for the development target.
+# Root configuration for the M1 fixture target.
 #
 # One directory per reviewed repository. To onboard another repo, copy this
 # directory, change the three values in terraform.tfvars, and apply. Nothing
