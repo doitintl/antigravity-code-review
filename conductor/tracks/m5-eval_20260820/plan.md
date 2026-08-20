@@ -42,11 +42,13 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
         same module, so the reviewer's output and the scorer's input are one definition
   - [x] Tolerate a line range and a near-miss line number; a finding is not wrong for being two
         lines off — ranges, reversed ranges, and a 3-line tolerance
-- [~] **Task: The scorer** *(logic)*
-  - [ ] Match on **location first**, text only to disambiguate
-  - [ ] A paraphrase of the same defect at the same location scores as found
-  - [ ] **Validate against a reference review before use** — a scorer that cannot find the defects in `claude[bot]`'s own text reports a false zero for everything
-- [ ] **Task: Incomplete runs are not clean runs** *(logic)*
+- [x] **Task: The scorer** *(logic)* — `0949667`
+  - [x] Match on **location first**, text only to disambiguate — text is a tie-breaker, never a veto
+  - [x] A paraphrase of the same defect at the same location scores as found — proven on real data:
+        **15/15 with every claim replaced by unrelated words**
+  - [x] **Validate against a reference review before use** — `evals/validate_scorer.py`, two checks;
+        the second reruns the first with the words scrubbed, which is the failure that happened
+- [~] **Task: Incomplete runs are not clean runs** *(logic)*
   - [ ] A run with a non-normal `stop_reason` is `incomplete`, excluded from recall, never counted as zero findings
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
