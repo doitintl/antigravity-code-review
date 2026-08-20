@@ -4,7 +4,7 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
 
 **The scorer is a logic module and carries this project's claims about quality.** It gets the same treatment the rate table got, for the same reason.
 
-## Phase 1 — Fixtures
+## Phase 1 — Fixtures [checkpoint: 26f9c4b]
 
 - [x] **Task: Fixture format** *(logic)* — `0c056bf`
   - [x] A fixture names repo, base SHA, head SHA, and a list of defects
@@ -29,7 +29,11 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
         reproduced; recorded in [`probe-results.md`](../../../docs/probe-results.md)
   - [x] Say plainly which fixtures rest on executed evidence and which on a recorded trigger path
         — **5 executed, 15 recorded**, printed as separate lines and stated as a limitation, as M1's `return True` could not
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md)) — `26f9c4b`
+  - 278 tests pass; the phase's three logic modules are at 100% coverage; ruff and mypy clean
+  - Verification was **run by the agent**, not handed to the user, at the user's direction
+  - Step 4 found real private-repository detail in two files and forced a scrub — recorded in
+    the git note rather than quietly fixed
 
 ## Phase 2 — Scoring that survives paraphrase
 
