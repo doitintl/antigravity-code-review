@@ -985,6 +985,74 @@ found by this reviewer under any condition.
 
 If it does not clear the bar, it does not ship, and the entry below says so.
 
+## 🔴 Batching failed the bar. It does not ship
+
+| | recall | cost |
+|---|---|---|
+| baseline, single session, 21 files | 0/4 | **$0.39** |
+| **batched, 6 sessions of 4 files** | **0/4** | **$0.70** |
+
+No better on recall, 79% worse on cost. Per the bar recorded before the run, it
+is not adopted. It stays in `probe/` as a measurement.
+
+### It also refutes the conclusion it was built on
+
+**Batch 3 contained `site-page-editor-shell.tsx` and `gated-content-cta.ts`** —
+the exact pair where the diagnostic found the defect three times out of three. It
+returned `NO FINDINGS`.
+
+So *"recall is a function of scope per pass"* was **wrong**, and the earlier
+entry saying otherwise was wrong. The diagnostic that produced it was confounded:
+every condition that found the defect also **named the feature** and used **only
+the two files that mattered**. Scope was varied, but never alone.
+
+### Two things the follow-up separated
+
+**The escape hatch was mine, and it mattered.** The batch instructions said *"if
+you find nothing, say exactly NO FINDINGS"* — and all six batches did, to the
+character. Removing that line, same four files, produced real findings instead
+of silence. **Offering a clean way to say nothing makes saying nothing the path
+of least resistance.** That is a defect in how the probe was written, not in the
+reviewer.
+
+**Naming the feature did not help.** With the escape hatch gone and the
+`gatedContentTag` feature described in the prompt, it still did not find the
+page-type mismatch.
+
+### What actually distinguishes found from missed
+
+Across every run so far, one pattern holds:
+
+- **Local defects it finds reliably.** The `sortOrder` `NaN` — `a.sortOrder -
+  b.sortOrder` on an optional field — was reported in four separate runs, at
+  two-file and four-file scope, under strict and loose bars. **`claude[bot]` did
+  not report it.**
+- **Cross-file contract mismatches it does not find spontaneously.** All four
+  known findings are of this kind: a field settable in one place and read in
+  another, a field missing from an allowlist, an identifier assumed unique that
+  is not, a notification assumed once-only that is not. It found one of them —
+  **only** when asked *"for which page types is this read, and for which can it
+  be set — are those the same set?"*
+
+The distinction is not scope, and not the precision bar. It is whether the
+comparison has been **posed**. Given a hypothesis to test, the model tests it
+correctly. Left to generate its own hypotheses across a diff, it inspects each
+change locally and reports what is wrong *within* it.
+
+### Where that leaves the design
+
+Anthropic's plugin does not solve this by scope either — it solves it by giving
+each agent a **mandate**: this one checks CLAUDE.md compliance, that one hunts
+bugs in the introduced code. A mandate is a hypothesis generator.
+
+So the next thing worth testing is not smaller batches but **named review passes**
+— "for every field this PR adds, find where it is read and where it is written,
+and report any asymmetry" — which is the shape of three of the four known
+findings. That is a checklist of contract questions, not a smaller window.
+
+Untested. Recorded as the next hypothesis rather than a conclusion, since the
+last one did not survive contact.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
