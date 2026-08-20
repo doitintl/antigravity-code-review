@@ -334,6 +334,54 @@ This is the same shape of leak Q4 found in `max_total_tokens`: **a dial that loo
 - **The attempt count is not deterministic.** The same impossible schema cost 9,856 tokens under one budget and 17,631 under another. Retry counts vary run to run, so retry cost is a distribution, not a constant. Do not model it as a fixed multiplier.
 - **`get_last_structured_output()` returned `None` even on the satisfiable schema.** Not chased further, because Q13 already decided against `response_schema` in favour of incremental MCP posting — but it is one more reason that decision was right.
 
+## Cross-check against the SDK's own documentation
+
+M0's findings were all measured. This section checks them against the published SDK reference (the `google-antigravity-sdk` skill bundle) — because agreement and disagreement are both informative, and this project has already been burned twice by reasoning from documentation.
+
+### Corroborated
+
+- **FR5 — the tool list.** The reference table lists exactly **13 built-in tools**, matching the `BuiltinTools` enum read off the wire. **`manage_task` and `schedule` appear nowhere in it.** An independent source agrees they are not SDK tools.
+- **The write-capable default.** *"All built-in tools are **enabled** by default… `run_command` is **denied** by the default `confirm_run_command()` policy — all other tools are allowed."* That is the measurement, in the vendor's words.
+- **Usage arithmetic.** `total_token_count` is documented as prompt + candidates + thinking, matching `usage.py`. The reference also warns to *"always monitor `thoughts_token_count`"*, which is why reasoning tokens are priced at the output rate in [`cost-tracking.md`](cost-tracking.md).
+
+### 🔴 Contradicted — the documentation is wrong, or silent, in three places
+
+| claim | documentation says | measurement says |
+|---|---|---|
+| `max_total_tokens` scope | dials *"govern entire agent sessions"*, counted *"across the session"* | binds on the **root trajectory**; subagent spend escapes (Q4) |
+| `max_model_calls` scope | *"caps generator invocations across the session"* | **does not cover model-output retries** (Q5) |
+| subagents on Vertex | no compatibility caveat anywhere | **fail outright** in `0.1.12` |
+
+Neither budget page mentions either evasion. A reader configuring a cost ceiling from the documentation alone would build one that leaks, and would have no reason to suspect it.
+
+### The trap in the safety documentation, stated plainly
+
+The safety reference says the default policy means *"new agents are **conservative by default** — they cannot execute shell commands"*. Its own reference entry for the same policy says `confirm_run_command()` *"Denies `run_command`, **allows everything else**"*.
+
+Both sentences are true. The first one is the one people remember, and it is how this project came to claim the SDK was read-only by default — corrected in `887880e`. **"Conservative" is doing a lot of work for a default that permits `create_file` and `edit_file` on input written by untrusted pull-request contributors.** The warning in [`design.md`](design.md) is aimed exactly here.
+
+### A fifth reproduction of the subagent defect — the one that matters most
+
+The agent-configuration reference advises: *"Avoid setting the model explicitly unless requested. It is generally better to leave the model unset to use the default behavior."* Every earlier reproduction set `model="gemini-3.7-flash"` explicitly, and the failure is specifically about *model resolution* — so the obvious question is whether the configuration caused it.
+
+It does not. Run with `model` **unset**, exactly as the documentation recommends:
+
+```
+trajectories=2  total=43,446  stop=UNSPECIFIED
+error executing cascade step: CORTEX_STEP_TYPE_INVOKE_SUBAGENT:
+failed to fetch tiered models for subagent model resolution: PlatformClient is nil
+```
+
+Identical failure, identical cost, against the vendor's own recommended configuration. **The defect is in the SDK, not in how this project calls it.**
+
+### One thing the documentation does not mention at all
+
+`Conversation.trajectory_usages` — the per-trajectory usage map that made Q4 answerable by reading rather than by inference — appears nowhere in the observability reference. It is the single most useful instrument found in this milestone, and it is undocumented.
+
+### Carried to M1
+
+`ask_question` is enabled in the default tool surface, and the reference notes that interactive tools need `agent_behavior=AgentBehavior.INTERACTIVE` to work properly. The reviewer runs unattended in CI: it must stay `AUTONOMOUS` (the default) **and** leave `ASK_QUESTION` out of `enabled_tools`, or it can stall waiting for a human who is not there.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
