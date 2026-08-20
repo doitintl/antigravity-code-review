@@ -81,7 +81,11 @@ runner is also the expensive half, and it should not be written against a guess.
   - [x] Drives `review.run_passes` rather than a copy — a harness that reimplements the pipeline
         measures the reimplementation
   - [x] `evals/run_eval.py` gates on reachability **and** scorer validation before any model call
-  - [~] Repeat N times (N ≥ 3) per configuration — sweep running
+  - [x] Repeat N times (N ≥ 3) per configuration — **12 runs, 4 fixtures, 2 repositories,
+        `$3.4765`**; 11 complete, 1 incomplete (a 429 on the judge, correctly excluded from
+        recall and still charged)
+  - [x] `evals/rescore.py` — re-score saved runs against corrected fixtures without re-spending.
+        Earned its place immediately: a fixture defect cost `$0` to correct rather than `$3.48`
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 4 — Replace the single-sample numbers
