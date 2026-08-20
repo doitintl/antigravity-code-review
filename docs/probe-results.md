@@ -942,6 +942,49 @@ addresses recall and cost with the same change.
 `5349acd3`, where four findings are known and one is now independently
 reproduced.
 
+## The batching experiment — baseline, and the bar it must clear
+
+Recorded before the result, so the bar cannot move afterwards.
+
+**All measurements on `doitbse/draft#538` at `5349acd3`** — the commit
+`claude[bot]` reviewed, 21 changed files, four known findings:
+
+| # | file | defect |
+|---|---|---|
+| 1 | `site-page-editor-shell.tsx` | `gatedContentTag` editable on all seven page types, read for only two |
+| 2 | `schemas/site-page.ts` | the field lands in `directFields`, bypassing the staging approval gate |
+| 3 | `lib/landing-page-utm.ts` | `utm_campaign` uses the bare leaf slug, which is not unique across parent paths |
+| 4 | `lib/landing-page-sales-notification.ts` | fires on every publish, not the first, so republishing re-announces a page live for weeks |
+
+None of the four is pattern-matchable. Every one needs either a second file or
+domain knowledge of the flow.
+
+### Baseline — single session, everything tried
+
+| variant | scope | recall | cost |
+|---|---|---|---|
+| strict bar | 21 files | **0/4** | $0.39 |
+| loose bar | 21 files | **0/4** | — |
+| `thinking_level=HIGH` (4x reasoning) | 21 files | **0/4** | ~$0.60 |
+| strict bar | **2 files** | **found #1** | ~$0.05 |
+| loose bar | **2 files** | **found #1** + a defect `claude[bot]` missed | ~$0.05 |
+
+Instructions, precision bar, and reasoning budget were each varied and none
+moved it. Scope moved it every time.
+
+### The bar
+
+Batching is adopted **only if it beats 0/4 at $0.39**. Nothing else about the
+reviewer changes — same model, same instructions, same tools — so any difference
+is attributable to scope per pass.
+
+A result of 1/4 would be real but thin: finding #1 is already known reachable at
+two-file scope, so recovering only that shows batching works and little else.
+**2/4 or better means it generalises**, because #2, #3 and #4 have never been
+found by this reviewer under any condition.
+
+If it does not clear the bar, it does not ship, and the entry below says so.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
