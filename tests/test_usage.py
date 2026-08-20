@@ -10,20 +10,20 @@ import types as pytypes
 
 import pytest
 
-from antigravity_code_review.usage import Usage, format_usage, read_usage
+from antigravity_code_review.usage import format_usage, read_usage
 
 
 def meta(**kw):
     """A stand-in for the SDK's UsageMetadata. Fields default to None, as the
     real object does, so tests exercise the None handling rather than dodge it."""
-    defaults = dict(
-        prompt_token_count=None,
-        cached_content_token_count=None,
-        candidates_token_count=None,
-        thoughts_token_count=None,
-        total_token_count=None,
-        service_tier=None,
-    )
+    defaults = {
+        "prompt_token_count": None,
+        "cached_content_token_count": None,
+        "candidates_token_count": None,
+        "thoughts_token_count": None,
+        "total_token_count": None,
+        "service_tier": None,
+    }
     return pytypes.SimpleNamespace(**{**defaults, **kw})
 
 
