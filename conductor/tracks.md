@@ -22,6 +22,6 @@ The central register of all tracks. Each entry links to that track's handshake.
 
 ---
 
-- [~] **Track: M5 — An evaluation harness (pinned fixtures, repeated runs, structured scoring)**
+- [x] **Track: M5 — An evaluation harness (pinned fixtures, repeated runs, structured scoring)**
 
   *Link: [conductor/tracks/m5-eval_20260820/index.md](./tracks/m5-eval_20260820/index.md)*
