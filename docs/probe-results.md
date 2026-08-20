@@ -1053,6 +1053,89 @@ findings. That is a checklist of contract questions, not a smaller window.
 Untested. Recorded as the next hypothesis rather than a conclusion, since the
 last one did not survive contact.
 
+## ✅ Contract passes beat the baseline on both axes
+
+Instead of "review this pull request", ask three named structural questions over
+the whole diff. Not batched — batching measured worse.
+
+| approach | recall | cost |
+|---|---|---|
+| single session, 21 files | 0/4 | $0.39 |
+| batched, 6 x 4 files | 0/4 | $0.70 |
+| **contract passes** | **2/4** | **$0.26** |
+
+**Better recall at two thirds the cost**, and achieved with **one of the three
+passes crashed** — the one targeting finding #3.
+
+The passes:
+
+1. *For every field this PR adds: where can it be written, where is it read, are
+   those the same conditions?* → findings #1, #2
+2. *For every value used as an identifier: what uniqueness is assumed versus
+   guaranteed?* → finding #3
+3. *For every side effect added: can it fire more than once for the same
+   subject?* → finding #4
+
+### The instrument was validated first
+
+Fed `claude[bot]`'s own review text, the scorer returns **4/4**. A scorer that
+could not find these in the reference would have reported a false 0/4 for
+everything — which is the class of error this investigation has already made
+twice.
+
+### 🔴 "Found" means surfaced, not flagged
+
+This qualification matters more than the number. On finding #1 the report says:
+
+> **Condition difference (by design)**: the field can be set on any `SitePage`,
+> but `findGatedContentCta` only reads it where `status == 'published'` and
+> `pageType in ['landing', 'hubspot-landing']`.
+
+That is exactly `claude[bot]`'s finding — **and it is labelled "by design" and
+dropped.** The asymmetry was identified correctly and then judged not to be a
+defect.
+
+So the contract passes fix the half that was actually broken: the model now
+*performs the comparison* instead of inspecting each change locally. What it does
+not yet do is *judge* the result. A surfaced asymmetry marked "by design" never
+becomes a review comment.
+
+That is a tractable gap, and it is the mirror of Anthropic's step 5. They
+generate findings and validate them to remove false positives; we surface facts
+and need a pass to decide which are defects. **Same separation, opposite
+direction.**
+
+### 🔴 An invalid tool call kills the session
+
+Pass 2 died on:
+
+```
+AntigravityExecutionError: model output error:
+invalid tool call error (invalid_signature) SearchPath is required
+```
+
+`search_directory` requires a `SearchPath` argument that appears nowhere in the
+SDK surface — `GrepSearchToolConfig` exposes only `enabled`. Omitting it
+**terminates the whole session** rather than returning a tool error the model
+could correct. It has now hit 4 of 7 runs, and it explains the "internal error in
+running grep command" seen in the first `draft#538` attempts.
+
+`ModelOutputRetryConfig(max_retries=1)` did not save it, because this is not a
+schema-validation retry — it is fatal.
+
+Fix by naming the required parameter in `system_instructions`, the way the MCP
+casing was fixed. Dropping the tool is the wrong answer: following references is
+the capability the contract passes depend on.
+
+### What ships
+
+The contract-pass structure earns adoption on the measurement. Two things must
+land with it: the `SearchPath` parameter documented, and a judging step so a
+surfaced asymmetry is decided rather than annotated.
+
+**And the standing caveat: this is one pull request with four findings.** 2/4 on
+n=1 is a reason to build M5's fixture set, not a claim that the reviewer works.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
