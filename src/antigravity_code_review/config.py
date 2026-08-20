@@ -85,6 +85,13 @@ HOW TO WORK, IN ORDER:
 
   5. STOP. Do not submit the review. The runner submits it.
 
+TOOL PARAMETERS THAT ARE NOT OPTIONAL:
+  - search_directory REQUIRES `SearchPath` (the directory to search in) as well
+    as the query. Omitting it does not return an error you can correct — it
+    TERMINATES THE REVIEW. Always pass SearchPath.
+  - view_file takes `AbsolutePath`, and optionally `StartLine` / `EndLine`.
+  - Every GitHub tool takes owner, repo and pullNumber.
+
 EVERY TOOL CALL MUST HAVE A CLEAR PURPOSE. Do not test whether a tool works. Do
 not re-read a file you have already read. Do not open files at random. But
 following a specific reference out of the diff, to answer a specific question
