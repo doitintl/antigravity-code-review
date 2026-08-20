@@ -95,6 +95,16 @@ def submit_review(repo: str, number: int, review_id: int, body: str, event: str 
     )
 
 
+def count_pending_comments(repo: str, number: int, review_id: int) -> int:
+    """How many comments the agent left on its pending review.
+
+    Read before submitting, so the review body can say how many findings it
+    carries. A reader should not have to scroll and count.
+    """
+    comments = _api(f"repos/{repo}/pulls/{number}/reviews/{review_id}/comments") or []
+    return len(comments)
+
+
 def publish_pending_review(
     repo: str, number: int, stop_reason: str, *, normal: bool, cost_line: str = ""
 ) -> bool:
@@ -114,16 +124,8 @@ def publish_pending_review(
     review = find_pending_review(repo, number)
     if review is None:
         return False
-    if normal:
-        body = "_Automated review. Posted by the runner, not by the agent._"
-    else:
-        body = (
-            f"_The agent stopped early: `{stop_reason}`. The findings above are "
-            f"what it had recorded by that point and are probably incomplete._"
-        )
-    if cost_line:
-        # The cost travels with the review rather than as a separate comment:
-        # a figure in its own comment gets read without the thing it priced.
-        body += f"\n\n{cost_line}"
+    # `cost_line` is the fully-rendered review body when supplied. The runner
+    # builds it, because only the runner knows what the run cost.
+    body = cost_line or "### Code review"
     submit_review(repo, number, review["id"], body)
     return True

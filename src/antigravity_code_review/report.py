@@ -48,6 +48,68 @@ def cost_line(session: PricedSession, tool_calls: int) -> str:
     )
 
 
+def review_body(
+    session: PricedSession,
+    *,
+    tool_calls: int,
+    model: str,
+    findings: int | None = None,
+    stop_reason: str | None = None,
+) -> str:
+    """The review body a human actually reads.
+
+    Written for the author of the pull request, not for us. An earlier version
+    opened with "Posted by the runner, not by the agent" — an internal
+    architectural distinction that mattered a great deal while building this and
+    means nothing to somebody reading their own PR. Implementation detail is not
+    context.
+
+    The cost sits in a table because a middle-dot-separated line of six numbers
+    is a log line, and a log line pasted into a review reads like one.
+    """
+    if findings is None:
+        headline = "### Code review"
+    elif findings == 0:
+        headline = "### Code review — no issues found"
+    else:
+        noun = "finding" if findings == 1 else "findings"
+        headline = f"### Code review — {findings} {noun}"
+
+    output = session.tokens_candidates + session.tokens_thoughts
+    cost = "not available" if session.cost_usd is None else f"**${session.cost_usd:.4f}**"
+
+    rows = [
+        ("Model", f"`{model}`"),
+        ("Input tokens", f"{session.tokens_prompt:,} ({session.cache_rate:.0%} cached)"),
+        ("Output tokens", f"{output:,}"),
+        ("Tool calls", f"{tool_calls:,}"),
+        ("Estimated cost", cost),
+    ]
+    table = "\n".join(
+        ["| | |", "|---|---|", *[f"| {label} | {value} |" for label, value in rows]]
+    )
+
+    parts = [headline, "", table, ""]
+
+    if stop_reason:
+        parts += [
+            (
+                f"> **This review is incomplete.** The run stopped early "
+                f"(`{stop_reason}`), so the findings above are only what had "
+                f"been recorded by that point."
+            ),
+            "",
+        ]
+
+    note = (
+        f"<sub>Cost is an estimate at published {session.rate_applied or 'list'} rates "
+        f"(source verified {VERIFIED_ON}); cache storage is billed separately and is not "
+        f"included. Verify against your billing export before quoting it.</sub>"
+    )
+    parts.append(note)
+    return "\n".join(parts)
+
+
 def cost_artifact(
     session: PricedSession,
     *,

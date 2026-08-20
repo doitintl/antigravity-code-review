@@ -9,7 +9,7 @@ from datetime import date
 
 from antigravity_code_review.cost import TurnUsage, price_session
 from antigravity_code_review.rates import FLASH, ServiceTier
-from antigravity_code_review.report import cost_artifact, cost_line
+from antigravity_code_review.report import cost_artifact, cost_line, review_body
 
 INTRO = date(2026, 8, 20)
 
@@ -99,3 +99,51 @@ class TestArtifact:
         a = cost_artifact(session(), repo="o/r", pr=7, model=FLASH, tool_calls=0)
         assert a["rate_source"].startswith("https://")
         assert a["rate_verified_on"]
+
+
+class TestReviewBody:
+    """Written for the PR author, not for us."""
+
+    def test_no_internal_implementation_detail(self):
+        """'Posted by the runner, not by the agent' meant nothing to a reader."""
+        b = review_body(session(), tool_calls=15, model=FLASH, findings=4)
+        for leak in ("runner", "agent", "harness", "hook"):
+            assert leak not in b.lower()
+
+    def test_headline_states_the_finding_count(self):
+        assert "4 findings" in review_body(session(), tool_calls=1, model=FLASH, findings=4)
+
+    def test_singular_finding(self):
+        assert "1 finding" in review_body(session(), tool_calls=1, model=FLASH, findings=1)
+
+    def test_zero_findings_says_so_plainly(self):
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=0)
+        assert "no issues found" in b.lower()
+
+    def test_costs_are_a_table_not_a_log_line(self):
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=1)
+        assert "|---|---|" in b
+        assert "·" not in b
+
+    def test_names_the_model_that_produced_it(self):
+        assert FLASH in review_body(session(), tool_calls=1, model=FLASH, findings=1)
+
+    def test_an_early_stop_is_called_out_prominently(self):
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=2,
+                        stop_reason="MAX_OUTPUT_TOKENS_EXCEEDED")
+        assert "incomplete" in b.lower()
+        assert b.count(">") >= 1
+
+    def test_a_normal_run_carries_no_warning(self):
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=2)
+        assert "incomplete" not in b.lower()
+
+    def test_the_estimate_caveat_is_present_but_subordinate(self):
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=1)
+        assert "estimate" in b.lower()
+        assert "<sub>" in b
+
+    def test_unknown_cost_does_not_render_a_dollar_sign(self):
+        b = review_body(session(model="nope"), tool_calls=1, model="nope", findings=1)
+        assert "not available" in b
+        assert "$" not in b

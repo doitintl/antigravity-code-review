@@ -22,6 +22,8 @@ from antigravity_code_review.collector import format_seed
 from antigravity_code_review.config import GITHUB_MCP_IMAGE, GITHUB_MCP_TOOLS, build_config
 from antigravity_code_review.cost import price_session
 from antigravity_code_review.github import (
+    count_pending_comments,
+    find_pending_review,
     get_pull_request,
     list_changed_files,
     publish_pending_review,
@@ -29,7 +31,7 @@ from antigravity_code_review.github import (
 from antigravity_code_review.guards import compare_allowlist, is_fork
 from antigravity_code_review.mcp_preflight import McpUnavailable, alist_server_tools
 from antigravity_code_review.rates import FLASH
-from antigravity_code_review.report import cost_artifact, cost_line
+from antigravity_code_review.report import cost_artifact, cost_line, review_body
 from antigravity_code_review.usage import format_usage, read_usage
 
 
@@ -118,7 +120,20 @@ async def review(repo: str, number: int, project: str) -> int:
     print("wrote review-cost.json")
 
     normal = stop is None or stop == types.StopReason.UNSPECIFIED
-    published = publish_pending_review(repo, number, str(stop), normal=normal, cost_line=line)
+
+    # Count the findings before submitting, so the body can say how many there
+    # are rather than leaving the reader to scroll and tally.
+    pending = find_pending_review(repo, number)
+    findings = count_pending_comments(repo, number, pending["id"]) if pending else None
+
+    body = review_body(
+        priced,
+        tool_calls=collector.tool_calls,
+        model=FLASH,
+        findings=findings,
+        stop_reason=None if normal else str(stop),
+    )
+    published = publish_pending_review(repo, number, str(stop), normal=normal, cost_line=body)
     print(f"pending review published: {published} (normal stop: {normal})")
     if not published:
         print("WARNING: the agent left no pending review, so nothing was posted.")
