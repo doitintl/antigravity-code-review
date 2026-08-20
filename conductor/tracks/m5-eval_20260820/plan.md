@@ -94,9 +94,15 @@ runner is also the expensive half, and it should not be written against a guess.
 
 ## Phase 4 — Replace the single-sample numbers
 
-- [ ] **Task: Measure the contract-pass configuration properly** *(integration)*
-  - [ ] Run it ≥3 times over all fixtures
-  - [ ] Compare against the single-sample figures in `probe-results.md` and correct them
+- [x] **Task: Measure the contract-pass configuration properly** *(integration)* — `72e18f9`
+  - [x] Run it ≥3 times over all fixtures — 12 runs, 4 fixtures, 2 repositories, `$3.4765`
+  - [x] Compare against the single-sample figures in `probe-results.md` and correct them
+  - **By class:** security 4/6, local 5/11, **cross-file 2/25**, **convention 0/11**
+  - **The single-sample figures held, and the reason they held is now known:** the 0/4 recorded
+    for `draft#538` reproduced at 0–1 of 4 over three runs. What changed is that it is no longer
+    an anecdote — cross-file blindness is stable across two repositories, not a bad draw
+  - **The harness produced a false 0/4 and corrected it for `$0`** — a defect recorded as a point
+    where the reference text had named a span. Cross-file 0/25 → 2/25
 - [ ] **Task: Re-test what was rejected on one sample** *(integration)*
   - [ ] Batching, `thinking_level`, judge tooling were each rejected on n=1
   - [ ] Some may have been rejected on noise. Say which
