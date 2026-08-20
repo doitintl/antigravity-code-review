@@ -109,6 +109,10 @@ jobs:
           GOOGLE_CLOUD_LOCATION: global
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ needs.gate.outputs.pr }}
+          # The `gh` CLI reads GH_TOKEN. Without it the collector fails before
+          # the agent starts — which is the right order to fail in, but only if
+          # the variable is actually set.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The MCP container is a child of the harness and inherits only what
           # LocalAgentConfig(env=...) passes it. This is the token it needs.
           GITHUB_PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
