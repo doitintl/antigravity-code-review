@@ -187,6 +187,24 @@ class TestReportingShape:
         s = score_run(_fixture(_defect("d1")), [])
         assert s.recall == 0.0
 
+    def test_a_run_outcome_supplies_incompleteness_and_its_reason(self):
+        """One definition of 'incomplete', shared with the reviewer."""
+        from antigravity_code_review.evalharness.runs import classify
+
+        s = score_run(
+            _fixture(_defect("d1")),
+            [_finding()],
+            outcome=classify("MAX_OUTPUT_TOKENS_EXCEEDED", text=""),
+        )
+        assert s.incomplete and s.recall is None
+        assert "MAX_OUTPUT_TOKENS_EXCEEDED" in s.stop_reason
+
+    def test_a_complete_outcome_leaves_recall_intact(self):
+        from antigravity_code_review.evalharness.runs import classify
+
+        s = score_run(_fixture(_defect("d1")), [_finding()], outcome=classify(None))
+        assert not s.incomplete and s.recall == 1.0
+
     def test_the_configuration_is_recorded_on_the_score(self):
         """FR8: a run names the configuration that produced it."""
         s = score_run(_fixture(_defect("d1")), [_finding()], configuration="contract-passes")

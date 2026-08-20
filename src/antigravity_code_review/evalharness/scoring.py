@@ -46,6 +46,7 @@ from antigravity_code_review.evalharness.findings import (
     normalise_path,
 )
 from antigravity_code_review.evalharness.fixtures import Defect, Fixture
+from antigravity_code_review.evalharness.runs import RunOutcome
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_]+")
 
@@ -162,6 +163,7 @@ def score_run(
     configuration: str = "default",
     incomplete: bool = False,
     stop_reason: str | None = None,
+    outcome: RunOutcome | None = None,
     tolerance: int = DEFAULT_TOLERANCE,
 ) -> RunScore:
     """Match a run's findings against a fixture's known defects.
@@ -172,12 +174,19 @@ def score_run(
         configuration: names the configuration under test (FR8).
         incomplete: the run did not finish normally. Excluded from recall.
         stop_reason: recorded verbatim for the report (FR5).
+        outcome: a `RunOutcome` from `runs.classify` or `runs.combine`. When
+            given it supplies both of the above, so the reviewer and the
+            harness cannot drift apart on what "incomplete" means.
         tolerance: how far a reported line may sit from the recorded one.
 
     Returns:
         A `RunScore`. Every defect appears in `matches`, hit or not; every
         finding that matched nothing appears in `novel`.
     """
+    if outcome is not None:
+        incomplete = outcome.incomplete
+        stop_reason = outcome.reason if outcome.incomplete else outcome.stop_reason
+
     matches: dict[str, Finding | None] = {d.id: None for d in fixture.defects}
     classes = {d.id: d.defect_class.value for d in fixture.defects}
     taken: set[int] = set()

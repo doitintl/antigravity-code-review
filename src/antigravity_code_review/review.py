@@ -49,6 +49,7 @@ from antigravity_code_review.config import (
 )
 from antigravity_code_review.cost import price_session
 from antigravity_code_review.evalharness.findings import parse_findings as parse_finding_records
+from antigravity_code_review.evalharness.runs import classify
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
@@ -164,11 +165,12 @@ async def review(repo: str, number: int, project: str) -> int:
             print(f"   FAILED: {type(exc).__name__}: {exc}")
             incomplete.append(name)
             continue
-        normal = stop is None or stop == types.StopReason.UNSPECIFIED
-        if not normal and not text:
-            # Q8: a budget stop returns empty text, which reads exactly like a
-            # clean pass. Never let that count as "nothing found".
-            print(f"   INCOMPLETE ({stop}) — empty output, not a clean result")
+        # Q8: a budget stop returns empty text, which reads exactly like a clean
+        # pass. One definition of "did this finish", shared with the eval
+        # harness, so the reviewer and the thing measuring it cannot disagree.
+        outcome = classify(stop, text=text, stage=name)
+        if outcome.incomplete and not text:
+            print(f"   INCOMPLETE — {outcome.reason}")
             incomplete.append(name)
             continue
         print(f"   {len(text)} chars")
