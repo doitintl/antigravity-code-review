@@ -21,9 +21,26 @@ names, not on general impressions.
 | 4 | `src/payments/transfers.py` | `transfer` | No balance check — debits past zero, bypassing `Ledger.debit`'s overdraft guard | high |
 | 5 | `src/payments/transfers.py` | `transfer` | Reaches into `ledger._balances` private state instead of the public API | medium |
 | 6 | `src/payments/transfers.py` | `except Exception: pass` | Audit failure silently swallowed; the transfer still reports success | high |
-| 7 | `src/payments/transfers.py` | `transfer` | Always returns `True`, so callers cannot detect failure | medium |
+| 7 | ~~`src/payments/transfers.py`~~ | ~~`transfer`~~ | ~~Always returns `True`~~ — **NOT A VALID DEFECT. Unreachable:** `Decimal - float` raises `TypeError` first, so `return True` never executes. Shadowed by defect 3. Found 0/8 times, correctly | ~~medium~~ |
 | 8 | — | `src/payments/rates.generated.json` | Large generated file (>128 KB) — exercises the `view_file` byte cap, not a defect to report | n/a |
 
 **8 is not a defect.** It is there so the truncation path is exercised by a real
 pull request. A reviewer that spends the review complaining about a generated
 data file is itself a finding.
+
+
+## Reachability
+
+Defect 7 was planted and is not reachable. `transfer()` raises `TypeError` on
+every call before it can return, so a reviewer that does not report the return
+value is triaging correctly rather than missing something.
+
+**Check reachability before counting a defect as planted.** A fixture that
+scores a correct decision as a failure produces numbers that look like evidence.
+Verified by running the fixture:
+
+```
+transfer RAISED TypeError: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'
+```
+
+Six defects are reachable. Score against six.

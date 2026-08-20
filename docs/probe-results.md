@@ -514,6 +514,95 @@ defect sets — one caught the swallowed audit exception, the other did not.
 Neither found the unconditional `return True`. **One run is an anecdote**, which
 is the argument for M5 stated as a measurement rather than a principle.
 
+## Non-determinism, measured across eight runs of one pull request
+
+"An agentic reviewer will not produce identical output twice" is in
+[`design.md`](design.md) as a principle. Eight runs of the *same* pull request
+make it a measurement, and the measurement is more useful than the principle —
+because the variance turns out not to be spread evenly at all.
+
+| planted defect | found in |
+|---|---|
+| hardcoded live API key | **8/8** |
+| SQL injection via `%` formatting | **8/8** |
+| `Decimal`/`float` mismatch | **8/8** |
+| no balance check (overdraft) | **8/8** |
+| private `_balances` mutation | **8/8** |
+| swallowed audit exception | **4/8** |
+| unconditional `return True` | **0/8** |
+
+**Five of seven were perfectly stable.** Every security-critical finding was
+reported in every run. The variance is confined to one defect, and the apparent
+total miss is not a miss at all.
+
+### The 0/8 is a broken fixture, not a broken reviewer
+
+`transfer()` computes `ledger.balance(sender) - total` where the balance is a
+`Decimal` and `total` is a `float`. That raises `TypeError` on every call, which
+was verified by running it:
+
+```
+transfer RAISED TypeError: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'
+```
+
+**`return True` is unreachable.** Defect 7 is shadowed by defect 3, and the
+reviewer was right not to report dead code. A fixture that scores it down for
+this would be measuring the wrong thing and would look like evidence.
+
+This is the trap M5 exists to walk into, arriving early and cheaply: **an eval
+fixture can contain a defect that cannot manifest, and the harness will read a
+correct triage decision as a failure.** Planted defects need to be checked for
+reachability, not just planted.
+
+### The 4/8 is a reporting effect, not a detection failure
+
+The one genuine variance separates perfectly on how many findings the run
+reported at all:
+
+| | comment counts |
+|---|---|
+| runs that reported it | 5, 5, 6, 12 |
+| runs that did not | 3, 3, 4, 4 |
+
+Zero overlap. **The swallowed exception is the marginal finding that falls off
+the end of a short list**, not something the model sometimes fails to see.
+
+Given the same file with no tool orchestration and no curation instruction, the
+same model reported it **6/6 times**, producing 8–16 findings rather than 3–6:
+
+| condition | findings per run | swallowed exception |
+|---|---|---|
+| reviewer, in CI | 3–6 | 4/8 |
+| same model, code inline, "report every defect" | 16, 16, 16 | 3/3 |
+| same model, code inline, "be concise" | 8, 9, 10 | 3/3 |
+
+Two plausible causes, and this project owns both of them rather than the model:
+
+1. **The system instruction tells it to curate** — *"report real defects… do not
+   report formatting preferences"*. Curation is exactly where a marginal finding
+   gets dropped.
+2. **Each finding costs an MCP round trip.** Posting inline as it goes makes the
+   sixth finding materially more expensive than the first, which is
+   back-pressure against reporting it at all.
+
+Distinguishing the two is a one-variable experiment, and it belongs in M5.
+
+### What this changes for M5
+
+**A single "defect recall" number would have been actively misleading here.** It
+would average a 100% band, a 50% band, and a 0% band that is really a fixture
+bug, into one meaningless figure that moves for reasons nobody can attribute.
+
+M5 should instead measure:
+
+- **recall per defect class**, since stability is not uniform across them;
+- **noticed versus reported** as separate quantities, because the only real
+  variance found so far lives entirely in the gap between them;
+- **findings-per-run as a first-class metric**, since it predicted the miss
+  perfectly and is far cheaper to collect than defect recall.
+
+And fixtures need a reachability check before a defect counts as planted.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
