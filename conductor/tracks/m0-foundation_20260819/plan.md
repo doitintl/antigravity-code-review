@@ -49,9 +49,10 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] Fetch `budget_limits.py` and `observability.py` from `google-antigravity/antigravity-sdk-python`, **from the tag matching the pinned `0.1.12`**, not from `main` — they do not ship in the wheel
   - [x] Run both against Vertex (`location="global"`); note any divergence from the API-key path they were written for — both PASS; neither sets `vertex=True`, and `observability.py` carries no `BudgetConfig`
   - [x] Correct `docs/prior-art.md`: the examples are not shipped in the distributed artefact — and the count is **32**, not 34 or 25; the 34 counted two READMEs
-- [ ] **Task: Q4 — subagent roll-up (FR7)** *(integration)*
-  - [ ] Controlled pair: identical task with and without delegation; compare root `total_usage`
-  - [ ] Determine whether subagent tokens count against `BudgetConfig`
+- [x] **Task: Q4 — subagent roll-up (FR7)** *(integration)* `b9db348`
+  - [x] Controlled pair: identical task with and without delegation; compare root `total_usage` — roll-up confirmed via `trajectory_usages`
+  - [x] Determine whether subagent tokens count against `BudgetConfig` — **no.** The dial binds on the root trajectory; the ceiling leaks
+  - [x] *Unplanned:* subagents fail outright on Vertex in `0.1.12` (`PlatformClient is nil`), and the failed spawn still bills ~10x the control
 - [ ] **Task: Q5 — retry accounting (FR8)** *(integration)*
   - [ ] Force a `response_schema` violation; measure whether retries consume `max_model_calls` and appear in usage
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
