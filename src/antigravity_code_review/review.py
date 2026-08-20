@@ -19,7 +19,7 @@ from antigravity_code_review.config import GITHUB_MCP_TOOLS, build_config
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
-    rescue_pending_review,
+    publish_pending_review,
 )
 from antigravity_code_review.guards import compare_allowlist, is_fork
 from antigravity_code_review.usage import format_usage, read_usage
@@ -64,12 +64,15 @@ async def review(repo: str, number: int, project: str) -> int:
     print(format_usage(usage))
     print(f"agent said: {text[:300]}")
 
-    # Q8: a stopped session leaves a PENDING review holding real comments and
-    # zero visible ones. Publishing it is the runner's job either way, but on a
-    # non-normal stop the body has to say why it ended.
-    if stop is not None and stop != types.StopReason.UNSPECIFIED:
-        published = rescue_pending_review(repo, number, str(stop))
-        print(f"stopped early ({stop}); pending review published: {published}")
+    # Q8: a pending review is invisible to everyone but the account that opened
+    # it, which in CI is github-actions[bot]. So the runner publishes it on
+    # EVERY path, not only when the agent stopped early — a clean run that
+    # nobody submits is a review nobody can read.
+    normal = stop is None or stop == types.StopReason.UNSPECIFIED
+    published = publish_pending_review(repo, number, str(stop), normal=normal)
+    print(f"pending review published: {published} (normal stop: {normal})")
+    if not published:
+        print("WARNING: the agent left no pending review, so nothing was posted.")
 
     return 0
 

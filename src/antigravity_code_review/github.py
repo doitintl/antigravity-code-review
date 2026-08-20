@@ -95,20 +95,29 @@ def submit_review(repo: str, number: int, review_id: int, body: str, event: str 
     )
 
 
-def rescue_pending_review(repo: str, number: int, stop_reason: str) -> bool:
-    """Publish whatever the agent had written when it stopped.
+def publish_pending_review(repo: str, number: int, stop_reason: str, *, normal: bool) -> bool:
+    """Publish the agent's pending review. Always called, not only on failure.
 
-    Called on any non-UNSPECIFIED stop. Returns True when a review was
-    published. The stop reason goes in the body verbatim, because a review that
-    ends early and does not say so reads as a complete review that found little.
+    Q8 established that a pending review is invisible to everyone except the
+    account that opened it — and in CI that account is `github-actions[bot]`,
+    not a human. So a review nobody submits is a review nobody can read, whether
+    the agent finished cleanly or ran out of budget.
+
+    A first version only submitted on an abnormal stop. The first successful CI
+    run therefore produced a complete review that stayed invisible: the agent
+    reported posting its comments, and the pull request showed none.
+
+    Returns True when a review was published.
     """
     review = find_pending_review(repo, number)
     if review is None:
         return False
-    body = (
-        f"_This review was submitted by the runner after the agent stopped: "
-        f"`{stop_reason}`. Findings above are what it had recorded by that point "
-        f"and may be incomplete._"
-    )
+    if normal:
+        body = "_Automated review. Posted by the runner, not by the agent._"
+    else:
+        body = (
+            f"_The agent stopped early: `{stop_reason}`. The findings above are "
+            f"what it had recorded by that point and are probably incomplete._"
+        )
     submit_review(repo, number, review["id"], body)
     return True
