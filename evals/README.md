@@ -86,3 +86,69 @@ independently of anything here.
 
 Three fixtures is enough to detect a ±1 finding swing and not enough to claim a
 percentage. The report says intervals, not points.
+
+## Running it
+
+```bash
+uv run python evals/run_eval.py --config contract-passes+judge --runs 3
+uv run python evals/run_eval.py --config contract-passes-only --fixture <name> --out results.json
+```
+
+Three gates run **before any model call**, because each has already been the
+reason a published number here was wrong:
+
+1. **Reachability** — every defect carries evidence it can manifest. A defect
+   that cannot fire scores a correct triage decision as a miss.
+2. **The scorer, validated against a reference review**, including the control
+   where every claim is replaced by unrelated words. An unvalidated scorer
+   reports a false zero that looks exactly like a real one.
+3. **Run count** — below three, the report says in its own output that every
+   figure in it is an anecdote.
+
+Failing either of the first two stops the run. Spending money to produce a
+number the harness already knows it cannot trust is worse than spending nothing.
+
+Checkouts are blobless and cached by `(repo, sha)` under `.eval-cache/`: about
+five seconds cold for a 2,400-file tree, free afterwards. A pinned commit does
+not change, so fetching it three times is three waits for the same bytes.
+
+## The runner drives the reviewer, not a copy of it
+
+`run_once` calls `review.run_passes`. A harness that reimplements the pipeline
+measures the reimplementation — which is the failure mode the whole milestone
+exists to end.
+
+It also reviews **the pinned commit**: the changed-file list comes from
+`compare(base…head)`, never from the pull request's current files.
+
+## Configurations
+
+`Configuration` names a comparable arm (FR8): the passes, the pass instructions,
+and whether there is a judge.
+
+| name | passes | judge |
+|---|---|---|
+| `contract-passes+judge` | four, prose output | yes |
+| `contract-passes-only` | four, **structured output** | no |
+
+**These two differ in two things, not one, and that is stated rather than
+hidden.** The shipped passes deliberately emit prose; only the judge emits JSON.
+A no-judge arm built on the prose instructions parses zero findings from every
+run and reports a clean-looking `0/N` — which reads as strong evidence that the
+judge is essential and is really an artefact of the parser. So the no-judge arm
+asks its passes for structured output, and any conclusion drawn from the
+comparison has to carry that caveat.
+
+## What the report will not do
+
+`render()` contains no percent sign, and a test enforces it. A percentage over
+three fixtures and three runs invites a comparison the sample cannot support,
+and a single number has acquired that kind of authority here three times
+already. What it prints instead:
+
+- **per-defect hit rate** — `2/3` and `3/3` are different facts;
+- **recall as a range** across runs, per fixture;
+- **recall by defect class**, because the bands are not uniform;
+- **cost beside recall**, with unknown cost reported as unknown and the total
+  labelled a floor;
+- **incomplete runs listed separately** — excluded from recall, still charged for.
