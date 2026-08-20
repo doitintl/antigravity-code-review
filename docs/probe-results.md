@@ -1496,6 +1496,92 @@ The old keyword scorer was reconstructed and run against the same data as a
 control: **4/4 on the reference text, 0/4 with the words replaced.** The
 published false zero, reproduced on demand.
 
+## 🔴 The judge is not the bottleneck. The hypothesis is refuted
+
+`contract-passes-only` — the same four passes, asked to emit findings directly,
+with **no judging step** — run 3 times against each of 4 fixtures. 12 runs, 9
+complete, **$2.3729**.
+
+The standing hypothesis, recorded above, was that the passes surface the defects
+and *the judge discards them*: "the judge sees four described asymmetries and
+calls one a defect", "the bottleneck has moved from perceiving to describing to
+judging". Removing the judge should therefore have recovered them.
+
+**It did not.**
+
+| defect class | with judge | **without judge** |
+|---|---|---|
+| security | 4 / 6 | **6 / 6** |
+| local | 5 / 11 | **2 / 11** |
+| **cross-file** | **2 / 25** | **0 / 18** |
+| convention | 0 / 11 | **0 / 10** |
+
+Cross-file went **down**, not up. Every cross-file defect the judged arm found,
+the unjudged arm missed. Whatever is losing those findings, it is not the judge
+throwing them away.
+
+**Cost fell about 40%** — $0.06 against $0.10 on the small fixture, $0.15–$0.35
+against $0.28–$0.42 on the real ones — because there is one fewer agent session.
+That is the one clear win, and it buys nothing on the axis that matters.
+
+### The caveat that keeps this from being cleaner than it is
+
+**Neither arm isolates surfacing from judging, and the second one cannot.** To
+get structured findings out of a pass, the pass has to be told to emit *defects*
+— so the judging moved into the pass rather than being removed. This was flagged
+in the code before the arm ran, and it is why the comparison varies two things:
+no judge, **and** passes that report rather than describe.
+
+Measuring pure *surfacing* would mean scoring the passes' prose, which is what
+the keyword scorer did and got wrong. There is no version of this experiment
+that measures surfacing with a location-matched scorer, and saying so is more
+useful than a number that pretends otherwise.
+
+### 🔴 Rate limiting, and what the harness did about it
+
+**3 of 12 runs came back incomplete on 429 `RESOURCE_EXHAUSTED`**, against 1 of
+12 in the first sweep — the two sweeps ran back to back against the same
+project. So the unjudged arm rests on 9 complete runs, not 12, and its
+denominators are thinner: cross-file 18 opportunities against 25.
+
+Every one of those runs was **excluded from recall and still charged**, with the
+stop reason recorded verbatim. Under the practice this milestone replaced they
+would have been three more zeros, and the unjudged arm would have looked worse
+than it is for a reason that has nothing to do with review quality.
+
+That is FR5 doing the job it was written for, on real data, twice.
+
+### One more actionable defect the sweeps surfaced
+
+`search_directory` rejects a **relative** `SearchPath`:
+
+```
+invalid tool call error (invalid_args) src/lib must be an absolute path
+```
+
+Three occurrences across the two sweeps. The system instructions say `SearchPath`
+is required — they do not say it must be absolute. Same class of avoidable turn
+cost as the MCP parameter casing, and the same fix: put it in the instructions.
+
+### What replaces the refuted hypothesis
+
+Not "the judge is fine". What can be said is narrower, and it is the first thing
+here said on more than one sample:
+
+- **Removing the judge does not recover cross-file findings**, so the judge is
+  not the sole thing standing between the reviewer and them.
+- **The judged arm is better at local defects and worse at security ones.**
+  5/11 against 2/11, and 4/6 against 6/6. Small numbers, opposite directions,
+  and enough to say the judge is not uniformly helping or uniformly hurting.
+- **The judge costs about 40% of the review.** That is now a priced trade rather
+  than an assumption.
+
+The next hypothesis worth testing is not another prompt. Both arms read the same
+diff-first context and both miss the same defects, which points at what the
+reviewer is *given* rather than at what it is asked. That is a bigger change than
+a milestone of prompt variants, and it should be proposed against this harness
+rather than against another single run.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
