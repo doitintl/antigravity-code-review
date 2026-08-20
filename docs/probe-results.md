@@ -446,6 +446,74 @@ committed it to the PR branch, where it appeared in the changed-file list — th
 reviewer could have read the answers and parroted them back, and the exit
 criterion would have measured nothing.
 
+## ✅ M1 exit criterion met — a real review on a real pull request
+
+Run [32350817311](https://github.com/SaschaHeyer/agy-review-fixture/actions/runs/32350817311), triggered by a `pull_request` event on `SaschaHeyer/agy-review-fixture` PR #1, keyless via WIF:
+
+```
+collected 2 changed files, seed is 612 chars
+stop: StopReason.UNSPECIFIED
+113,116 in (43% cached) · 1,628 out · 2,802 thinking · 117,546 total · tier=standard
+pending review published: True (normal stop: True)
+```
+
+It named the planted defects — hardcoded live API key, SQL injection via `%`
+formatting, `Decimal`/`float` mismatch, and private-state mutation bypassing
+`Ledger`'s overdraft guard — and correctly ignored the 582 KB generated file it
+was not asked to review.
+
+### Two bugs the exit criterion caught that nothing else would have
+
+**1. The review was invisible.** The first run that reached the MCP server
+reported posting its comments, and the pull request showed none. `FR8` says *the
+runner submits*; the implementation had quietly narrowed that to *the runner
+submits when the agent stopped early*. On a clean finish nobody submitted.
+
+This is **Q8 in production**: a pending review is invisible to every account
+except the one that opened it, and in CI that account is `github-actions[bot]`,
+not a human. The finding that was a curiosity in M0 was a silent total failure
+in M1.
+
+**2. The loud truncation marker was being cut off.** The harness applies its own
+`tool_output_truncation` to whatever a tool returns, and `LocalAgentConfig`
+exposes no field to configure or disable it. Our marker was appended, so the
+model saw only the harness's generic *"the output was truncated because it was
+too long"* — never which file, how big, or how much was missing. **The reviewer
+would have reasoned about a file it could not see while believing it had read
+it**, which is precisely the failure FR5 exists to prevent.
+
+Fixed by leading with the marker. Verified live: asked what it had been told,
+the model reported 200,034 bytes total and 68,962 not shown — exactly
+`200,034 − 131,072`.
+
+### Three cheaper lessons
+
+- **The agent must be told which repository it is reviewing.** Without `owner`
+  and `repo` in the system instructions every GitHub call resolved to `'/'` and
+  failed. M0 measured the casing hint as worth three to four turns; naming the
+  repository is worth more, because without it nothing works at all.
+- **Left to guess a tool name, the agent invents one.** It tried
+  `create_pending`, which does not exist. The instructions now spell out the
+  sequence and name that invention as a thing not to make.
+- **`gh` needs `GH_TOKEN` in Actions**, which is not the same variable the MCP
+  container needs. The collector failed before the agent started — the right
+  order to fail in, and only legible because the collector raises rather than
+  returning an empty file list.
+
+### Cost, as the first real M2 datum
+
+**~117k tokens per review** of a two-file pull request, 43–56% cached across
+runs. At standard Vertex rates that is roughly $0.18 per review. The prompt is
+dominated by the tool surface and the file the agent chose to read, not by the
+seed, which was 612 characters.
+
+### Non-determinism, already visible
+
+Two clean runs of the *same* pull request found overlapping but different
+defect sets — one caught the swallowed audit exception, the other did not.
+Neither found the unconditional `return True`. **One run is an anecdote**, which
+is the argument for M5 stated as a measurement rather than a principle.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

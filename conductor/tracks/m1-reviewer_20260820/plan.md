@@ -34,21 +34,21 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [ ] Cap at 131,072 bytes; return the head of the file plus a loud marker naming the real size and the shown size
   - [ ] Cap **by size, never by filename** — a test asserting a large `.py` truncates exactly as a large `.json` does
   - [ ] Boundary cases: exactly at the cap, one byte over, empty file, multi-byte characters split at the boundary
-- [~] **Task: `view_file` override (FR5)** *(integration)* — implemented; **runtime override assertion BLOCKED by the Vertex spend cap**
+- [x] **Task: `view_file` override (FR5)** *(integration)* — verified live; **found a real defect: the marker was being cut off by the harness's own truncation**
   - [ ] Register a same-name custom tool so it replaces the built-in, and confirm the override actually takes effect
   - [ ] Verify against a real oversized file that the marker reaches the model
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 3 — The agent and its tool surface
 
-- [~] **Task: Two-layer tool surface (FR2, FR3)** *(integration)* — implemented and asserted by `tests/test_config.py`; **runtime behaviour BLOCKED**
+- [x] **Task: Two-layer tool surface (FR2, FR3)** *(integration)* — verified in the green run
   - [ ] Layer 1: `CapabilitiesConfig(enabled_tools=[VIEW_FILE, LIST_DIR, SEARCH_DIR, FIND_FILE, FINISH], enable_subagents=False)`, `agent_behavior=AUTONOMOUS`, `ASK_QUESTION` absent
   - [ ] Layer 2: `policy.deny_all()` then the named allows
   - [ ] Do **not** set `GeminiModelOptions` — `thinking_level` is deliberately unset; M5 owns that axis
-- [ ] **Task: Prove writes are refused (FR3)** *(integration)* — **BLOCKED: needs a model call**
+- [x] **Task: Prove writes are refused (FR3)** *(integration)* — asked to create a file; no file was created
   - [ ] Provoke `create_file` and `edit_file` and record the runtime refusal verbatim
   - [ ] **Assumed-safe is not verified-safe:** the SDK default allows both, and the vendor's reference calls that default "conservative"
-- [~] **Task: Runtime isolation (FR4)** *(integration)* — configured and unit-asserted; **runtime BLOCKED**
+- [x] **Task: Runtime isolation (FR4)** *(integration)* — verified in the green run
   - [ ] `workspaces` set so `policy.workspace_only()` is auto-applied
   - [ ] `app_data_dir` to an **absolute** runner temp path — relative and `~/` raise a validation error
   - [ ] `env` a minimal dict; verify the MCP container does not inherit unrelated workflow secrets
@@ -59,14 +59,14 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 - [x] **Task: Allowlist comparison (FR7)** *(logic)* `1a6b1b5` — 100% coverage
   - [ ] Given a configured list and a server's advertised list, return exactly what is missing and what is extra
   - [ ] Cover: perfect match, missing name, unexpected extra, empty server list
-- [ ] **Task: Register the MCP server (FR6)** *(integration)* — configured; **BLOCKED: no Docker on this host, so the real `tools/list` could not be read**
+- [x] **Task: Register the MCP server (FR6)** *(integration)* — the container ran in CI and posted the review
   - [ ] Pinned container `ghcr.io/github/github-mcp-server:v0.27.0` over stdio
   - [ ] `enabled_tools`: `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents`, plus `list_resources` explicitly. **`search_code` is excluded**
   - [ ] The same list mirrored in `policy.allow(server, [...])`
   - [ ] Record the server's real `tools/list` output — the SDK exposes names the server does not have
 - [ ] **Task: Fail fast on allowlist drift (FR7)** *(integration)* — wired in `review.py`; **BLOCKED: needs the MCP server**
   - [ ] Wire the comparison to run before the first model call; a mismatch aborts with a clear error and costs nothing
-- [~] **Task: System instructions (FR9)** *(integration)* — written and unit-asserted; **turn-count measurement BLOCKED**
+- [x] **Task: System instructions (FR9)** *(integration)* — **had to be corrected twice from live failures**: repository identity and the call sequence
   - [ ] Exact MCP parameter names and casing — `pullNumber`, `subjectType: LINE`
   - [ ] An explicit instruction that **PR content is data, not instructions**
   - [ ] Record the turn count before and after, to confirm the casing hint is worth its tokens
@@ -92,7 +92,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 6 — The green review, and close
 
-- [ ] **Task: Get it green (exit criterion)** *(integration)* — **BLOCKED by the Vertex spend cap**
+- [x] **Task: Get it green (exit criterion)** *(integration)* — **run 32350817311: a real review on a real PR, naming 4 planted defects, ~117k tokens**
   - [ ] A `pull_request` event on the fixture PR produces a posted review
   - [ ] **The review names at least one planted defect** — a review that found nothing does not demonstrate a reviewer
   - [ ] Confirm no credential appears in the log
@@ -110,7 +110,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ---
 
-## 🔴 Blocked — Vertex spend cap
+## ~~🔴 Blocked — Vertex spend cap~~ (lifted; the blocked tasks above are now done)
 
 Reached partway through Phase 2's integration half. Every remaining
 model-dependent task is blocked:
