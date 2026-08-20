@@ -44,16 +44,25 @@ REPO = "doitbse/draft"
 BASE = "b6693f01b245ac6511775f3613b9d074c045eb61"
 HEAD = "5349acd36e4f681b7e7ebc6b2576f8eb15b92f47"
 
+# Matched on file plus concept, with enough synonyms to survive paraphrase.
+# A previous version keyed on "page type"; the judge wrote "pages" and the run
+# scored a real finding as missed. Keyword scoring over free text is fragile —
+# M5 needs structured findings matched on file and line instead of this.
 KNOWN = [
     ("gated tag on wrong page types", "site-page-editor-shell",
-     ("page type", "pagetype", "all page types", "every page type", "seven")),
+     ("page type", "pagetype", "all page types", "every page type", "seven",
+      "never match", "never render", "only queries landing", "standard or documentation",
+      "not a landing", "non-landing")),
     ("gated tag bypasses staging", "site-page.ts",
-     ("staged", "directfields", "stagedfields", "allowlist", "approval")),
+     ("staged", "directfields", "stagedfields", "allowlist", "approval",
+      "bypass", "live doc", "working copy", "straight to")),
     ("utm_campaign slug collision", "landing-page-utm",
-     ("collision", "not unique", "unique", "leaf slug", "same slug", "conflict", "ambiguous")),
+     ("collision", "not unique", "unique", "leaf slug", "same slug", "conflict",
+      "ambiguous", "two pages", "different parent", "indistinguishable")),
     ("republish re-notifies", "landing-page-sales-notification",
      ("republish", "every publish", "re-publish", "already live", "unpublish",
-      "first publish", "firstpublished", "more than once", "each time")),
+      "first publish", "firstpublished", "more than once", "each time",
+      "every transition", "repeatedly", "again")),
 ]
 
 SHARED = """\
@@ -86,12 +95,22 @@ The audit was asked to describe, not to judge, and it sometimes annotates a real
 defect as "by design" without evidence that anyone designed it. Your job is that
 judgement, made explicitly.
 
+YOU HAVE TOOLS. USE THEM. Do not decide from the report alone — the report is a
+set of claims about the code, and you are deciding which are defects. Open the
+files. Read the guard the report says exists, or establish that it does not.
+A judgement made without looking is a guess, and the previous version of this
+step guessed and dismissed three real defects.
+
 For each asymmetry, gap or unguarded effect the report describes, decide:
 
   DEFECT   - a user or editor can reach a state the code does not handle, or an
              effect fires in a situation its name or purpose does not cover.
   INTENDED - there is POSITIVE evidence of intent: a guard, a type, a comment, a
-             validation, a documented constraint. Name the evidence.
+             validation, a documented constraint. **Read the file and quote it.**
+             An unverified claim of intent is not evidence.
+
+For each item: name the file you opened, quote the line that decides it, then
+rule. If you did not open a file, you are not finished with that item.
 
 "It is probably fine" is not evidence. "The author must have meant it" is not
 evidence. If a field can be set where it will never be read, and nothing prevents
@@ -204,8 +223,16 @@ async def main(checkout: str, project: str) -> int:
         cfg = LocalAgentConfig(
             vertex=True, project=project, location="global", model=FLASH,
             system_instructions=JUDGE,
+            # The judge gets the same tools as the passes. Without them it was
+            # deciding whether a guard exists by reasoning about a description of
+            # the code, which is guessing, and it guessed three real defects away.
+            tools=[view_file, make_view_diff(patches)],
             capabilities=types.CapabilitiesConfig(
-                enabled_tools=[types.BuiltinTools.FINISH], enable_subagents=False),
+                enabled_tools=list(REVIEW_TOOLS), enable_subagents=False,
+                agent_behavior=types.AgentBehavior.AUTONOMOUS,
+                compaction_threshold=300_000),
+            workspaces=[checkout],
+            app_data_dir=tempfile.mkdtemp(prefix="agy-judge-"),
             budget_config=types.BudgetConfig(max_input_tokens=900_000, max_output_tokens=20_000),
         )
         async with Agent(cfg) as agent:
