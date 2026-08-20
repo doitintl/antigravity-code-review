@@ -37,8 +37,19 @@ def view_file(AbsolutePath: str, StartLine: int | None = None, EndLine: int | No
     Returns:
       The file contents, truncated with a visible marker if oversized.
     """
-    resolved = os.path.realpath(AbsolutePath)
+    # Resolve relative paths against the WORKSPACE, not the process cwd.
+    #
+    # The parameter is named AbsolutePath and the model mostly honours that, but
+    # not always: on a real repository it asked for "CLAUDE.md" and the guard
+    # refused, because realpath() resolved it against wherever the runner
+    # happened to be. The agent then spent 88 tool calls and $1.51 working
+    # around a file it had every right to read.
+    #
+    # Refusing a path outside the workspace is correct. Refusing a *relative*
+    # path that names a file inside it is just a bug wearing a security costume.
     workspace = os.path.realpath(_WORKSPACE)
+    candidate = AbsolutePath if os.path.isabs(AbsolutePath) else os.path.join(workspace, AbsolutePath)
+    resolved = os.path.realpath(candidate)
     if not resolved.startswith(workspace + os.sep) and resolved != workspace:
         return f"[REFUSED: '{AbsolutePath}' is outside the workspace and was not read.]"
 
