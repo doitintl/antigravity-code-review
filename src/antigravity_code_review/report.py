@@ -28,7 +28,12 @@ def cost_line(session: PricedSession, tool_calls: int) -> str:
     here. A low hit rate on a repeated review usually means volatile content
     early in the prompt, which is fixable.
     """
-    calls = f"{session.turns} model call" + ("" if session.turns == 1 else "s")
+    # "turn", not "model call". An SDK turn is one chat() call, and a review
+    # spends many model calls inside a single turn working its tool loop. The
+    # token totals are cumulative over the turn and are correct either way, but
+    # calling one turn "1 model call" was simply false — a review that made
+    # eleven tool calls plainly did not make one model call.
+    calls = f"{session.turns} turn" + ("" if session.turns == 1 else "s")
     output = session.tokens_candidates + session.tokens_thoughts
 
     if session.cost_usd is None:

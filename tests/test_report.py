@@ -23,7 +23,7 @@ def session(**kw):
 class TestCostLine:
     def test_reports_turns_tokens_cache_rate_and_cost(self):
         line = cost_line(session(), tool_calls=31)
-        assert "1 model call" in line
+        assert "1 turn" in line
         assert "100,000 in" in line
         assert "50% cached" in line
         assert "$" in line
@@ -37,9 +37,13 @@ class TestCostLine:
         assert "$0" not in line
         assert "unknown" in line.lower()
 
-    def test_pluralises_model_calls(self):
+    def test_pluralises_turns(self):
         s = price_session([TurnUsage(prompt_tokens=10)] * 3, FLASH, INTRO)
-        assert "3 model calls" in cost_line(s, tool_calls=0)
+        assert "3 turns" in cost_line(s, tool_calls=0)
+
+    def test_does_not_claim_model_calls(self):
+        """An SDK turn is one chat(); many model calls happen inside it."""
+        assert "model call" not in cost_line(session(), tool_calls=11)
 
     def test_output_tokens_are_shown(self):
         assert "4,500 out" in cost_line(session(), tool_calls=0)
