@@ -70,7 +70,9 @@ def assert_keyless() -> None:
     if "private_key" in cred:
         raise SystemExit("FAIL: the credential file contains a private key.")
 
-    print(f"keyless: credential type is 'external_account' ({cred.get('subject_token_type', '?')})  OK")
+    print(
+        f"keyless: credential type is 'external_account' ({cred.get('subject_token_type', '?')})  OK"
+    )
 
 
 async def probe(project: str) -> int:

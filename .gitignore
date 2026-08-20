@@ -36,3 +36,4 @@ htmlcov/
 # Env
 .env
 .venv-dev/
+terraform/environments/fixture/.terraform.lock.hcl

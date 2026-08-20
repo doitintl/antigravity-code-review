@@ -382,6 +382,227 @@ Identical failure, identical cost, against the vendor's own recommended configur
 
 `ask_question` is enabled in the default tool surface, and the reference notes that interactive tools need `agent_behavior=AgentBehavior.INTERACTIVE` to work properly. The reviewer runs unattended in CI: it must stay `AUTONOMOUS` (the default) **and** leave `ASK_QUESTION` out of `enabled_tools`, or it can stall waiting for a human who is not there.
 
+## M1 — what was verified before the spend cap
+
+### 🔴 The blocker
+
+Partway through M1, `sascha-playground-doit` stopped accepting Vertex calls:
+
+```
+request failed (code 403): Spend cap breached for project:
+projects/234439745674 for service: aiplatform.googleapis.com
+```
+
+A **project-level spend cap**, not a `BudgetConfig` dial — no configuration in
+this repository can spend past it. `m0_probe`, green earlier the same day, now
+fails identically, so M1 did not introduce it.
+
+**It re-confirms Q7 in the wild:** the SDK raised `AntigravityConnectionError`
+rather than reporting zero tokens. The one failure mode this project most needed
+to be loud was loud.
+
+### ✅ Verified without a model
+
+**Runner-owned submit (FR8), end to end on a real pull request.** This is the Q8
+mechanism in production form, and it needs no agent at all:
+
+| step | result |
+|---|---|
+| create a `PENDING` review with one comment | id `4980504813`, state `PENDING` |
+| `find_pending_review` locates it | yes |
+| `rescue_pending_review` submits it | yes |
+| state afterwards | **`COMMENTED`**, no pending review remaining |
+
+The event is `COMMENT`, deliberately — not `REQUEST_CHANGES` or `APPROVE`. An
+automated reviewer that can block a merge is a different product with a
+different failure mode, and approving on the strength of an agent's read is
+worse than either.
+
+**Collection against fixture PR #1.** 2 changed files, seed produced, and the
+invariant held: no patch content reached the prompt. Observed file-entry keys
+were `additions, blob_url, changes, contents_url, deletions, filename, raw_url,
+sha, status` — note that GitHub omits `patch` entirely on large entries, so code
+that assumed its presence would have failed on exactly the generated file the
+byte cap exists for.
+
+**The parameterisation claim from M0, tested and found wanting.** M0's
+acceptance criterion 2 said the WIF module "instantiates for a second repository
+by changing variables only". It did not: the environment wrapper never exposed
+`sa_name`, so a second repository in the same project collides on the service
+account. The *module* parameterised it correctly; the wrapper did not pass it
+through. Fixed in both environments. **The claim was true of the module and
+false of the thing anyone would actually copy.**
+
+### The fixture
+
+`SaschaHeyer/agy-review-fixture` PR #1 — seven planted defects (hardcoded
+credential, SQL injection, float money in a `Decimal` codebase, a missing balance
+check bypassing the overdraft guard, private-state access, a swallowed audit
+exception, an unconditional `True` return) plus a 582 KB generated JSON file to
+exercise the byte cap on a real diff.
+
+The inventory lives in this repository, **not** in the fixture. A first version
+committed it to the PR branch, where it appeared in the changed-file list — the
+reviewer could have read the answers and parroted them back, and the exit
+criterion would have measured nothing.
+
+## ✅ M1 exit criterion met — a real review on a real pull request
+
+Run [32350817311](https://github.com/SaschaHeyer/agy-review-fixture/actions/runs/32350817311), triggered by a `pull_request` event on `SaschaHeyer/agy-review-fixture` PR #1, keyless via WIF:
+
+```
+collected 2 changed files, seed is 612 chars
+stop: StopReason.UNSPECIFIED
+113,116 in (43% cached) · 1,628 out · 2,802 thinking · 117,546 total · tier=standard
+pending review published: True (normal stop: True)
+```
+
+It named the planted defects — hardcoded live API key, SQL injection via `%`
+formatting, `Decimal`/`float` mismatch, and private-state mutation bypassing
+`Ledger`'s overdraft guard — and correctly ignored the 582 KB generated file it
+was not asked to review.
+
+### Two bugs the exit criterion caught that nothing else would have
+
+**1. The review was invisible.** The first run that reached the MCP server
+reported posting its comments, and the pull request showed none. `FR8` says *the
+runner submits*; the implementation had quietly narrowed that to *the runner
+submits when the agent stopped early*. On a clean finish nobody submitted.
+
+This is **Q8 in production**: a pending review is invisible to every account
+except the one that opened it, and in CI that account is `github-actions[bot]`,
+not a human. The finding that was a curiosity in M0 was a silent total failure
+in M1.
+
+**2. The loud truncation marker was being cut off.** The harness applies its own
+`tool_output_truncation` to whatever a tool returns, and `LocalAgentConfig`
+exposes no field to configure or disable it. Our marker was appended, so the
+model saw only the harness's generic *"the output was truncated because it was
+too long"* — never which file, how big, or how much was missing. **The reviewer
+would have reasoned about a file it could not see while believing it had read
+it**, which is precisely the failure FR5 exists to prevent.
+
+Fixed by leading with the marker. Verified live: asked what it had been told,
+the model reported 200,034 bytes total and 68,962 not shown — exactly
+`200,034 − 131,072`.
+
+### Three cheaper lessons
+
+- **The agent must be told which repository it is reviewing.** Without `owner`
+  and `repo` in the system instructions every GitHub call resolved to `'/'` and
+  failed. M0 measured the casing hint as worth three to four turns; naming the
+  repository is worth more, because without it nothing works at all.
+- **Left to guess a tool name, the agent invents one.** It tried
+  `create_pending`, which does not exist. The instructions now spell out the
+  sequence and name that invention as a thing not to make.
+- **`gh` needs `GH_TOKEN` in Actions**, which is not the same variable the MCP
+  container needs. The collector failed before the agent started — the right
+  order to fail in, and only legible because the collector raises rather than
+  returning an empty file list.
+
+### Cost, as the first real M2 datum
+
+**~117k tokens per review** of a two-file pull request, 43–56% cached across
+runs. At standard Vertex rates that is roughly $0.18 per review. The prompt is
+dominated by the tool surface and the file the agent chose to read, not by the
+seed, which was 612 characters.
+
+### Non-determinism, already visible
+
+Two clean runs of the *same* pull request found overlapping but different
+defect sets — one caught the swallowed audit exception, the other did not.
+Neither found the unconditional `return True`. **One run is an anecdote**, which
+is the argument for M5 stated as a measurement rather than a principle.
+
+## Non-determinism, measured across eight runs of one pull request
+
+"An agentic reviewer will not produce identical output twice" is in
+[`design.md`](design.md) as a principle. Eight runs of the *same* pull request
+make it a measurement, and the measurement is more useful than the principle —
+because the variance turns out not to be spread evenly at all.
+
+| planted defect | found in |
+|---|---|
+| hardcoded live API key | **8/8** |
+| SQL injection via `%` formatting | **8/8** |
+| `Decimal`/`float` mismatch | **8/8** |
+| no balance check (overdraft) | **8/8** |
+| private `_balances` mutation | **8/8** |
+| swallowed audit exception | **4/8** |
+| unconditional `return True` | **0/8** |
+
+**Five of seven were perfectly stable.** Every security-critical finding was
+reported in every run. The variance is confined to one defect, and the apparent
+total miss is not a miss at all.
+
+### The 0/8 is a broken fixture, not a broken reviewer
+
+`transfer()` computes `ledger.balance(sender) - total` where the balance is a
+`Decimal` and `total` is a `float`. That raises `TypeError` on every call, which
+was verified by running it:
+
+```
+transfer RAISED TypeError: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'
+```
+
+**`return True` is unreachable.** Defect 7 is shadowed by defect 3, and the
+reviewer was right not to report dead code. A fixture that scores it down for
+this would be measuring the wrong thing and would look like evidence.
+
+This is the trap M5 exists to walk into, arriving early and cheaply: **an eval
+fixture can contain a defect that cannot manifest, and the harness will read a
+correct triage decision as a failure.** Planted defects need to be checked for
+reachability, not just planted.
+
+### The 4/8 is a reporting effect, not a detection failure
+
+The one genuine variance separates perfectly on how many findings the run
+reported at all:
+
+| | comment counts |
+|---|---|
+| runs that reported it | 5, 5, 6, 12 |
+| runs that did not | 3, 3, 4, 4 |
+
+Zero overlap. **The swallowed exception is the marginal finding that falls off
+the end of a short list**, not something the model sometimes fails to see.
+
+Given the same file with no tool orchestration and no curation instruction, the
+same model reported it **6/6 times**, producing 8–16 findings rather than 3–6:
+
+| condition | findings per run | swallowed exception |
+|---|---|---|
+| reviewer, in CI | 3–6 | 4/8 |
+| same model, code inline, "report every defect" | 16, 16, 16 | 3/3 |
+| same model, code inline, "be concise" | 8, 9, 10 | 3/3 |
+
+Two plausible causes, and this project owns both of them rather than the model:
+
+1. **The system instruction tells it to curate** — *"report real defects… do not
+   report formatting preferences"*. Curation is exactly where a marginal finding
+   gets dropped.
+2. **Each finding costs an MCP round trip.** Posting inline as it goes makes the
+   sixth finding materially more expensive than the first, which is
+   back-pressure against reporting it at all.
+
+Distinguishing the two is a one-variable experiment, and it belongs in M5.
+
+### What this changes for M5
+
+**A single "defect recall" number would have been actively misleading here.** It
+would average a 100% band, a 50% band, and a 0% band that is really a fixture
+bug, into one meaningless figure that moves for reasons nobody can attribute.
+
+M5 should instead measure:
+
+- **recall per defect class**, since stability is not uniform across them;
+- **noticed versus reported** as separate quantities, because the only real
+  variance found so far lives entirely in the gap between them;
+- **findings-per-run as a first-class metric**, since it predicted the miss
+  perfectly and is far cheaper to collect than defect recall.
+
+And fixtures need a reachability check before a defect counts as planted.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
