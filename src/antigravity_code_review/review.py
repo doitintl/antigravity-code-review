@@ -77,6 +77,7 @@ async def review(repo: str, number: int, project: str) -> int:
         print(f"MCP preflight skipped: {exc}")
 
     async with Agent(config) as agent:
+        collector.bind(agent.conversation)
         response = await agent.chat(seed)
         text = (await response.text()).strip()
         stop = response.stop_reason

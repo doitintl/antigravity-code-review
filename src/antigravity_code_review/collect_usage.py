@@ -31,6 +31,17 @@ class UsageCollector:
         self.compactions: int = 0
         self.tool_calls: int = 0
         self._last_totals: tuple[int, int, int, int] = (0, 0, 0, 0)
+        self._conversation: Any = None
+
+    def bind(self, conversation: Any) -> None:
+        """Attach the conversation so the post-turn hook can read usage from it.
+
+        `PostTurnArgs` carries only `response_text` — verified against the proto
+        descriptor for 0.1.12 — so the hook payload cannot supply usage. The
+        conversation can, but only exists after the Agent is constructed, which
+        is after the hooks are registered. Hence binding rather than injection.
+        """
+        self._conversation = conversation
 
     def record_cumulative(self, usage: Any, service_tier: Any = None) -> None:
         """Record a turn from a cumulative usage snapshot.
@@ -73,15 +84,25 @@ class UsageCollector:
             self.tool_calls += 1
 
         @hooks.post_turn
-        async def snapshot_turn(data: Any) -> None:
+        async def snapshot_turn(_data: Any) -> None:
             """Snapshot after every turn, not once at the end.
 
             A first version recorded only the final cumulative reading, so a
             multi-turn review reported "1 model call" and priced the whole
-            session at whatever tier the last request happened to use.
+            session at whichever tier the last request happened to use.
+
+            The usage comes from the bound conversation rather than the hook
+            payload, because PostTurnArgs has exactly one field and it is the
+            response text.
             """
-            usage = getattr(data, "usage", None) or getattr(data, "total_usage", None)
+            if self._conversation is None:
+                return
+            usage = getattr(self._conversation, "total_usage", None)
+            tier = None
+            last = getattr(self._conversation, "last_turn_usage", None)
+            if last is not None:
+                tier = getattr(last, "service_tier", None)
             if usage is not None:
-                self.record_cumulative(usage)
+                self.record_cumulative(usage, service_tier=tier)
 
         return [count_compaction, count_tool_call, snapshot_turn]

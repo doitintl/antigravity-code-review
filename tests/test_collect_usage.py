@@ -70,3 +70,18 @@ class TestHooks:
     def test_counters_start_at_zero(self):
         c = UsageCollector()
         assert c.compactions == 0 and c.tool_calls == 0
+
+
+class TestBinding:
+    def test_unbound_collector_ignores_the_turn_hook(self):
+        """PostTurnArgs carries only response_text, so usage comes from the
+        conversation. Without one bound there is nothing to read, and that must
+        not raise mid-review."""
+        c = UsageCollector()
+        assert c._conversation is None
+        assert c.turns == []
+
+    def test_bind_attaches_the_conversation(self):
+        c = UsageCollector()
+        c.bind(object())
+        assert c._conversation is not None
