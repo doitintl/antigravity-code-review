@@ -1205,6 +1205,68 @@ better problem to have and a narrower one to fix.
 
 **Still one pull request with four findings.** Every number above is n=1.
 
+## 🛑 Stop tuning: the measurement is now noisier than the interventions
+
+Three runs of the contract-pass reviewer on the same pull request, at the same
+commit, with the same four known findings.
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| change | — | `SearchPath` documented, judge added | judge given tools |
+| passes completed | 2 of 3 | 3 of 3 | 3 of 3 |
+| **surfaced** | 2/4 | **4/4** | **3/4** |
+| **reported** | — | 1/4 + 1 novel | **1/4** |
+| cost | $0.26 | $0.34 | $0.31 |
+
+**Giving the judge tools changed nothing measurable.** Reported held at 1/4, cost
+moved by three cents, and the novel defect from run 2 disappeared.
+
+### The variance is larger than the effects
+
+Between run 2 and run 3, with **no change to the passes at all**:
+
+- pass 1 output: 20,012 chars → 9,912 chars
+- findings surfaced: 4/4 → 3/4
+
+A finding that was surfaced in one run was not surfaced in the next, from an
+identical prompt against identical code. M1 already measured this reviewer's
+non-determinism and found the marginal finding dropping off a short list; this is
+the same effect at the scale that matters.
+
+**So the last two interventions cannot be evaluated.** A change worth less than
+one finding is invisible against a ±1 finding swing, and every number in the
+table is a single sample.
+
+### What is established, and what is not
+
+**Established**, because the effects are large enough to clear the noise:
+
+- Naming the contract question works. 0/4 surfaced across every variant of "find
+  bugs" — including four times the reasoning — against 3/4 or 4/4 once the
+  comparison is posed. That is the finding of this whole investigation.
+- Documenting `SearchPath` fixed a fatal crash, reproducibly, across three runs.
+- Diff-first plus `compaction_threshold` took a run that died at $1.46 to one
+  that completes at ~$0.30.
+
+**Not established**: whether the judge helps, whether tools help the judge,
+whether 1/4 or 2/4 is the real reporting rate, and whether any of it generalises
+past this one pull request.
+
+### The rule this run bought
+
+**No further tuning against n=1.** Three separate times an instrument produced
+the headline number here rather than the reviewer, and now run-to-run variance
+exceeds the interventions being tested. Continuing would be fitting to noise, and
+doing it carefully would not make it less so.
+
+M5 is no longer a later milestone. It is the precondition for any further claim
+about review quality, and it needs three things:
+
+1. **Several pull requests** with known findings, not one.
+2. **Repeated runs per configuration**, since one sample cannot see a ±1 swing.
+3. **Structured findings** — file, line, claim — matched on location rather than
+   wording. Keyword scoring over free text has already produced one false zero.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
