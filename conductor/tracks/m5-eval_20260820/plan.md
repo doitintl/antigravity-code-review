@@ -48,8 +48,14 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
         **15/15 with every claim replaced by unrelated words**
   - [x] **Validate against a reference review before use** — `evals/validate_scorer.py`, two checks;
         the second reruns the first with the words scrubbed, which is the failure that happened
-- [~] **Task: Incomplete runs are not clean runs** *(logic)*
-  - [ ] A run with a non-normal `stop_reason` is `incomplete`, excluded from recall, never counted as zero findings
+- [x] **Task: Incomplete runs are not clean runs** *(logic)* — `722ddec`
+  - [x] A run with a non-normal `stop_reason` is `incomplete`, excluded from recall, never counted
+        as zero findings — implemented stronger than FR5's wording: **any** non-normal stop is
+        incomplete, even one that produced findings, because its recall is a floor
+  - [x] `combine()` rolls the passes and the judge into one outcome — the missing check that let a
+        run with a crashed pass report 2/4 as though three had run
+  - [x] `review.py` classifies through the same function, so the reviewer and the harness cannot
+        disagree about what "finished" means
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 3 — The harness
