@@ -90,7 +90,7 @@ config = LocalAgentConfig(
 
 ### Why capabilities come before policies
 
-An earlier draft used policies alone. Policies decide what a tool call *does when it arrives*; capabilities decide **whether the model is ever told the tool exists**. Under `deny_all()` on its own, `create_file`, `edit_file`, `run_command`, `start_subagent` and `generate_image` are all still advertised in every request. That is worse in three separate ways, and one of them is this project's own subject:
+An earlier draft used policies alone. Policies decide what a tool call *does when it arrives*; capabilities decide **whether the model is ever told the tool exists**. Under `deny_all()` on its own, `create_file`, `edit_file`, `run_command`, `start_subagent` and `generate_image` are all still advertised in every request — confirmed against the wire contract in M0: the shipped default enables 12 of the 14 `HarnessSideTools` slots, `file_edit`, `write_to_file` and `run_command` among them. That is worse in three separate ways, and one of them is this project's own subject:
 
 **It costs money on every turn.** Tool schemas sit in the prompt prefix of a multi-turn pull-context review. Advertising eight tools the agent may never use is a tax on all fourteen turns of a review, and it is the cheapest saving available anywhere in this design.
 
@@ -106,7 +106,13 @@ This is not a reading of the documentation — it is the SDK's own guidance, and
 
 `enabled_tools` is an **explicit allowlist, mutually exclusive with `disabled_tools`**; when both are `None` the harness default is all tools enabled. A reviewer's tool set is fixed and unconditional, which is exactly the case the guideline assigns to layer 1. Note the docstring names retries as a cost of the policy-only approach — a denied call can be re-attempted, so the waste is not bounded at one turn.
 
-And `enable_subagents` **defaults to true**. That is worth an explicit `False` here on cost grounds alone: a subagent is a second conversation, and whether its tokens roll into `Conversation.total_usage` or count against `BudgetConfig` is still unverified. An uncounted spender is precisely the thing this project claims to have eliminated.
+And `enable_subagents` **defaults to true**. M0 settled what that costs, and the answer is worse than the open question it replaces:
+
+- Subagent tokens **do** roll into `Conversation.total_usage` — visible in `trajectory_usages` as a trajectory of their own.
+- They do **not** count against `BudgetConfig`. The dial binds on the root trajectory, so a ceiling above the root and below root+subagent does not stop the run. **The ceiling leaks.**
+- On Vertex, delegation **fails outright** in `0.1.12` — `CORTEX_STEP_TYPE_INVOKE_SUBAGENT: failed to fetch tiered models for subagent model resolution: PlatformClient is nil` — and the failed spawn still bills roughly **ten times** a direct answer.
+
+So `enable_subagents=False` is not a cost preference here, it is a requirement: it is the only thing that makes the M3 ceiling truthful, and on Vertex delegation buys a guaranteed failure at 10x the price. See [`probe-results.md`](probe-results.md).
 
 ### Two levers the plan had not found
 
@@ -234,7 +240,7 @@ These are unresolved and are called out rather than assumed.
 
 1. **Headless authentication in CI via WIF.** The SDK supports `vertex=True` with ADC, and the codelab's agent falls back to it when no API key is set. But **both published examples authenticate their workflow with an API key secret**, so the WIF path inside a GitHub Actions runner is demonstrated nowhere. Still M0's first task, though a smaller risk than it looked: the SDK side is supported, only the CI wiring is unproven. Pass `project` and `location` explicitly, as the SDK documents them — the environment-variable names are inherited convention, not documented SDK surface, and an assumption in the one place the project cannot afford one. If ADC turns out not to work headlessly, the documented fallback is Vertex **Express Mode** (`vertex=True, api_key=...`): it keeps spend on Vertex and attributable, at the cost of reintroducing the key this design exists partly to remove.
 2. **Whether `CapabilitiesConfig(enabled_tools=...)` is exclusive or additive.** The SDK's documentation says both, in different files. The whole first layer of the tool boundary depends on the answer. See "Why capabilities come before policies".
-3. **Whether subagent tokens roll into `Conversation.total_usage` and count against `BudgetConfig`.** Subagents are on by default. If the answer is no, they are an uncounted spender and must stay off. Turned off here either way.
+3. ~~**Whether subagent tokens roll into `Conversation.total_usage` and count against `BudgetConfig`.**~~ **Answered (Q4).** They reach `total_usage` but escape `BudgetConfig`, and on Vertex delegation fails outright while still billing ~10x. They are an uncounted spender. `enable_subagents=False` is mandatory.
 4. **How much of a skill reaches the model unprompted.** The SDK's own example asks the agent *"What available skills do you have?"*, which reads as discovery rather than unconditional injection. The Agent Skills specification predicts frontmatter-always, body-on-demand. Needs confirming against a run log, not inferred. See "Repository rules" above.
 5. **Cost versus a single-shot reviewer**, measured rather than assumed. Plausibly several times higher per review. Whether the extra findings justify it is an empirical question, and the answer may be "only on larger PRs".
 6. **Latency.** Multi-turn agents are slower. If a review lands after a human has already merged, it buys nothing — which is the single most common way an AI reviewer becomes shelfware.
