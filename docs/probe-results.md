@@ -382,6 +382,70 @@ Identical failure, identical cost, against the vendor's own recommended configur
 
 `ask_question` is enabled in the default tool surface, and the reference notes that interactive tools need `agent_behavior=AgentBehavior.INTERACTIVE` to work properly. The reviewer runs unattended in CI: it must stay `AUTONOMOUS` (the default) **and** leave `ASK_QUESTION` out of `enabled_tools`, or it can stall waiting for a human who is not there.
 
+## M1 — what was verified before the spend cap
+
+### 🔴 The blocker
+
+Partway through M1, `sascha-playground-doit` stopped accepting Vertex calls:
+
+```
+request failed (code 403): Spend cap breached for project:
+projects/234439745674 for service: aiplatform.googleapis.com
+```
+
+A **project-level spend cap**, not a `BudgetConfig` dial — no configuration in
+this repository can spend past it. `m0_probe`, green earlier the same day, now
+fails identically, so M1 did not introduce it.
+
+**It re-confirms Q7 in the wild:** the SDK raised `AntigravityConnectionError`
+rather than reporting zero tokens. The one failure mode this project most needed
+to be loud was loud.
+
+### ✅ Verified without a model
+
+**Runner-owned submit (FR8), end to end on a real pull request.** This is the Q8
+mechanism in production form, and it needs no agent at all:
+
+| step | result |
+|---|---|
+| create a `PENDING` review with one comment | id `4980504813`, state `PENDING` |
+| `find_pending_review` locates it | yes |
+| `rescue_pending_review` submits it | yes |
+| state afterwards | **`COMMENTED`**, no pending review remaining |
+
+The event is `COMMENT`, deliberately — not `REQUEST_CHANGES` or `APPROVE`. An
+automated reviewer that can block a merge is a different product with a
+different failure mode, and approving on the strength of an agent's read is
+worse than either.
+
+**Collection against fixture PR #1.** 2 changed files, seed produced, and the
+invariant held: no patch content reached the prompt. Observed file-entry keys
+were `additions, blob_url, changes, contents_url, deletions, filename, raw_url,
+sha, status` — note that GitHub omits `patch` entirely on large entries, so code
+that assumed its presence would have failed on exactly the generated file the
+byte cap exists for.
+
+**The parameterisation claim from M0, tested and found wanting.** M0's
+acceptance criterion 2 said the WIF module "instantiates for a second repository
+by changing variables only". It did not: the environment wrapper never exposed
+`sa_name`, so a second repository in the same project collides on the service
+account. The *module* parameterised it correctly; the wrapper did not pass it
+through. Fixed in both environments. **The claim was true of the module and
+false of the thing anyone would actually copy.**
+
+### The fixture
+
+`SaschaHeyer/agy-review-fixture` PR #1 — seven planted defects (hardcoded
+credential, SQL injection, float money in a `Decimal` codebase, a missing balance
+check bypassing the overdraft guard, private-state access, a swallowed audit
+exception, an unconditional `True` return) plus a 582 KB generated JSON file to
+exercise the byte cap on a real diff.
+
+The inventory lives in this repository, **not** in the fixture. A first version
+committed it to the PR branch, where it appeared in the changed-file list — the
+reviewer could have read the answers and parroted them back, and the exit
+criterion would have measured nothing.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
