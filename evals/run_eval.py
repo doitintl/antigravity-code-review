@@ -33,11 +33,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from antigravity_code_review.evalharness.fixtures import load_fixtures
 from antigravity_code_review.evalharness.reachability import require_reachable
 from antigravity_code_review.evalharness.report import aggregate, render
-from antigravity_code_review.evalharness.runner import CONFIGURATIONS, run_configuration
+from antigravity_code_review.evalharness.runner import (
+    CONFIGURATIONS,
+    checkout,
+    run_configuration,
+)
 from antigravity_code_review.evalharness.scoring import (
+    COVERAGE_WARN,
     ScorerValidationError,
     ambiguous_pairs,
     findings_from_reference,
+    location_coverage,
     score_run,
     validate_against_reference,
 )
@@ -102,7 +108,32 @@ def main() -> int:
     unvalidated = _validate_scorer(fixtures)
     print()
 
-    print("GATE 3 — defect pairs location alone cannot separate")
+    print("GATE 3 — how easily a finding could score by accident")
+    soft = []
+    for fixture in fixtures:
+        tree = checkout(fixture)
+        lengths = {}
+        for defect in fixture.defects:
+            path = tree / defect.file
+            if path.exists():
+                lengths[defect.file] = len(
+                    path.read_text(errors="replace", encoding="utf-8").splitlines()
+                )
+        covered, total = location_coverage(fixture, lengths)
+        share = covered / total if total else 0.0
+        if share > COVERAGE_WARN:
+            soft.append((fixture.name, share))
+            print(
+                f"  SOFT         {fixture.name}: {share:.0%} of its changed lines sit within "
+                "reach of some defect.\n               A finding placed at random is likely to "
+                "score here, so its numbers mean\n               materially less than the same "
+                "numbers from a large file."
+            )
+        else:
+            print(f"  OK           {fixture.name}: {share:.1%} of changed lines within reach")
+    print()
+
+    print("GATE 4 — defect pairs location alone cannot separate")
     ambiguous = 0
     for fixture in fixtures:
         for left, right, gap in ambiguous_pairs(fixture):
@@ -128,6 +159,14 @@ def main() -> int:
         print(
             f"  CAVEAT: {unvalidated} fixture(s) have no reference review, so the scorer "
             "is unvalidated\n  against them. Their numbers rest on the scorer being right."
+        )
+    if soft:
+        print()
+        print(
+            "  CAVEAT: "
+            + ", ".join(f"{n} ({s:.0%} of lines in reach)" for n, s in soft)
+            + ".\n  Recall from those fixtures is a weaker claim than the same figure "
+            "elsewhere."
         )
     if ambiguous:
         print()

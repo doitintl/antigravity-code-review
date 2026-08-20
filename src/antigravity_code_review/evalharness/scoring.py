@@ -247,6 +247,64 @@ def ambiguous_pairs(
     return pairs
 
 
+# Above this share of a fixture's lines sitting inside some defect's tolerance
+# window, a finding placed at random is likely to score, and the fixture's
+# numbers mean materially less than the same numbers from a large file.
+COVERAGE_WARN = 0.25
+
+
+def location_coverage(
+    fixture: Fixture,
+    file_lengths: dict[str, int],
+    tolerance: int = DEFAULT_TOLERANCE,
+) -> tuple[int, int]:
+    """How much of a fixture's changed files lies within reach of some defect.
+
+    Location-first scoring rests on a defect's tolerance window being a small
+    part of the file it sits in. That assumption holds for a 1,900-line source
+    file and collapses for a 41-line one: with five defects and a plus-or-minus
+    three window, 71% of such a file is inside *some* window, and five findings
+    scattered anywhere plausible score 4 of 5 with their text replaced by
+    nonsense.
+
+    The scorer is not wrong there — the fixture is small. But two identical
+    numbers from fixtures of different sizes are not the same claim, and a
+    harness that prints both without comment is inviting the reader to treat
+    them alike. So this is measured and reported.
+
+    Args:
+        fixture: the fixture to measure.
+        file_lengths: line count per changed file. Files absent from this map
+            are skipped rather than guessed at.
+        tolerance: the same window the scorer matches with.
+
+    Returns:
+        `(lines_within_reach, lines_total)` over the files that carry defects.
+    """
+    by_file: dict[str, list[Defect]] = {}
+    for defect in fixture.defects:
+        by_file.setdefault(normalise_path(defect.file), []).append(defect)
+
+    reachable = total = 0
+    lengths = {normalise_path(k): v for k, v in file_lengths.items()}
+    for path, defects in by_file.items():
+        length = lengths.get(path)
+        if not length:
+            continue
+        total += length
+        covered: set[int] = set()
+        for defect in defects:
+            if defect.line is None:
+                # It matches anything in the file, so the honest answer is all of it.
+                covered = set(range(1, length + 1))
+                break
+            low = max(1, defect.line - tolerance)
+            high = min(length, defect.line + tolerance)
+            covered |= set(range(low, high + 1))
+        reachable += len(covered)
+    return reachable, total
+
+
 def findings_from_reference(reference: dict[str, Any]) -> list[Finding]:
     """Turn a fetched reference review into findings the scorer can consume.
 

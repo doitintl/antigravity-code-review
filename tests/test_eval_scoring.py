@@ -20,6 +20,7 @@ from antigravity_code_review.evalharness.scoring import (
     ScorerValidationError,
     ambiguous_pairs,
     findings_from_reference,
+    location_coverage,
     score_run,
     scored_recall,
     validate_against_reference,
@@ -241,6 +242,59 @@ class TestAmbiguousDefectPairs:
         f = _fixture(_defect("d1", line=30), _defect("d2", line=40))
         assert ambiguous_pairs(f) == []
         assert ambiguous_pairs(f, tolerance=6) == [("d1", "d2", 10)]
+
+
+class TestHowEasilyAFindingCanScoreByAccident:
+    """The check that a user's question forced, and it found a real problem.
+
+    Location-first scoring assumes a defect's tolerance window is a small part
+    of the file. On a 41-line file with five defects and a plus-or-minus-three
+    window, 71% of the lines are inside *some* window — and five findings
+    scattered anywhere plausible scored 4/5 with their text replaced by
+    nonsense. The scorer is not wrong; the fixture is small, and a number from
+    it means less than the same number from a 1,900-line file.
+
+    So the harness measures its own gullibility and reports it, rather than
+    letting two identical-looking numbers carry different weight in silence.
+    """
+
+    def test_a_defect_in_a_large_file_covers_almost_none_of_it(self):
+        f = _fixture(_defect("d1", file="src/a.ts", line=900))
+        covered, total = location_coverage(f, {"src/a.ts": 1800})
+        assert covered == 7 and total == 1800
+
+    def test_a_defect_in_a_tiny_file_covers_most_of_it(self):
+        f = _fixture(_defect("d1", file="src/a.ts", line=5))
+        covered, total = location_coverage(f, {"src/a.ts": 10})
+        assert covered / total > 0.5
+
+    def test_overlapping_windows_are_not_double_counted(self):
+        f = _fixture(_defect("d1", file="src/a.ts", line=10), _defect("d2", file="src/a.ts", line=12))
+        covered, _ = location_coverage(f, {"src/a.ts": 100})
+        assert covered == 9  # 7..15, not 7 + 7
+
+    def test_a_window_is_clipped_to_the_file(self):
+        f = _fixture(_defect("d1", file="src/a.ts", line=2))
+        covered, _ = location_coverage(f, {"src/a.ts": 4})
+        assert covered == 4  # lines 1..4, never 0 or 5
+
+    def test_a_defect_with_no_line_covers_its_whole_file(self):
+        """It matches anything in the file, so the honest coverage is all of it."""
+        f = _fixture(_defect("d1", file="src/a.ts", line=None))
+        covered, total = location_coverage(f, {"src/a.ts": 200})
+        assert covered == total == 200
+
+    def test_a_file_whose_length_is_unknown_is_skipped_not_guessed(self):
+        f = _fixture(_defect("d1", file="src/a.ts", line=10))
+        assert location_coverage(f, {}) == (0, 0)
+
+    def test_multiple_files_are_summed(self):
+        f = _fixture(
+            _defect("d1", file="src/a.ts", line=50),
+            _defect("d2", file="src/b.ts", line=50),
+        )
+        covered, total = location_coverage(f, {"src/a.ts": 100, "src/b.ts": 100})
+        assert covered == 14 and total == 200
 
 
 class TestValidatingTheScorerBeforeUse:
