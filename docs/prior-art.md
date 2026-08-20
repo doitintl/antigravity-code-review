@@ -77,6 +77,55 @@ Ships with the SDK (`skills/google-antigravity-sdk/`) and is also distributable 
 
 Most useful pages: `safety_policies.md` (the nine-level priority model), `built_in_tools.md` (canonical tool names and default state), `observability.md` (usage tracking, and the warning that failed runs may report zero tokens), `agent_configuration.md` (the rule against assuming model identifiers).
 
+
+## Anthropic's `code-review` plugin
+
+[`plugins/code-review/commands/code-review.md`](https://github.com/anthropics/claude-code/blob/main/plugins/code-review/commands/code-review.md). Read after our reviewer failed on `doitbse/draft#538`. It is a prompt, not a codebase, which makes it unusually legible — and it independently confirms two things this project worked out the hard way, then supplies several it had not.
+
+### It reads the diff
+
+Its `allowed-tools` line grants `Bash(gh pr diff:*)`. **The review is anchored on the diff, not on file contents.** Our reviewer opens whole files from a changed-file list, which is how it came to read the wrong 128 KB of a 2.9 MB generated file. Independent confirmation of the M2.5 finding.
+
+### It forbids exploration
+
+> All tools are functional and will work without error. Do not test tools or make exploratory calls. **Every tool call should have a clear purpose.**
+
+Ours made **87 tool calls and found nothing**. This instruction is aimed exactly at that failure, and costs nothing to adopt.
+
+### It sets a precision bar, and an explicit list of things not to flag
+
+The bar is narrow and testable — code that will not compile, code that is wrong regardless of input, or a convention violation you can quote. And then, unusually, six categories to *suppress*: pre-existing issues, anything a linter catches, pedantic nitpicks, general code-quality concerns, things that look like bugs but are correct, and issues explicitly silenced in code.
+
+> **If you are not certain an issue is real, do not flag it. False positives erode trust and waste reviewer time.**
+
+Our system instruction says "report real defects… do not report formatting preferences", which is the same intent at a fraction of the specificity. M1's non-determinism measurement found the marginal finding dropping off a short list; a precision bar this explicit is a better instrument than a curation instruction.
+
+### It validates every finding before posting
+
+Step 5 launches a subagent **per issue** whose only job is to confirm the issue is real, and step 6 discards everything unvalidated. Generation and verification are separated, and only verified findings reach the pull request.
+
+### It gates before spending
+
+A cheap first agent skips closed, draft, trivial, and already-reviewed pull requests. Our workflow gates on fork and authorisation but happily spends on a one-line typo fix.
+
+### What we cannot copy, and why
+
+The design leans on **parallel subagents** — four reviewers with different mandates, then one validator per finding, with models tiered haiku/sonnet/opus by task.
+
+**That is the capability M0 found broken.** Subagents fail outright on Vertex (`PlatformClient is nil`), and their tokens escape `BudgetConfig` entirely, so even working they would break the cost ceiling M2 and M3 are built on. Model tiering is also unavailable to us for a smaller reason: M2 pins one model so the rate table has a key.
+
+So the *shape* does not transfer. The **separation of generate from verify** does — as a second pass in one session rather than a fan-out.
+
+### What to adopt
+
+1. **Anchor on the diff.** Already possible: `pull_request_read(method="get_diff")` is in our allowlist and unused.
+2. **"Every tool call should have a clear purpose. Do not make exploratory calls."** Verbatim.
+3. **An explicit do-not-flag list**, and a precision bar stated as "if you are not certain, do not flag it".
+4. **A verification pass** over the findings before publishing, in-session.
+5. **Gate on triviality**, not only on forks and permissions.
+6. **One comment per issue.** Ours posted duplicates when a run failed mid-way.
+7. **Permalinks with the full SHA** and a line of context either side, which is how their inline comments stay readable.
+
 ## What this project adds
 
 Neither example measures what a review costs. One advertises the capability and ships a placeholder; the other does not raise the subject. So the contribution here is narrow and specific:

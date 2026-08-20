@@ -75,6 +75,9 @@ review a 30-line change, reading the wrong 128 KB, and learning nothing. See
 - [ ] **File size in the prompt seed**, so a generated artefact can be recognised without opening it. "Do not review generated files" is unactionable when reading the file is the only way to tell
 - [ ] **Set `compaction_threshold`**, which M1 left unset. Nothing currently bounds context growth across turns, and a 30-file PR reached 7.5M cumulative input tokens
 - [ ] **Re-run `doitbse/draft#538`** as the acceptance test. The 4-file fixture cannot exercise any of this
+- [ ] **Adopt the precision instructions from Anthropic's `code-review` plugin** — see [`prior-art.md`](prior-art.md): "every tool call should have a clear purpose, do not make exploratory calls" (ours made 87 and found nothing), an explicit do-not-flag list, and "if you are not certain an issue is real, do not flag it"
+- [ ] **Verification pass before publishing** — separate generating a finding from confirming it. Anthropic fans this out to a subagent per issue; subagents are unusable here (M0), so this is a second pass in one session
+- [ ] **Gate on triviality**, not only forks and authorisation. A one-line typo fix should not cost a review
 
 **Exit:** a real 30-file pull request reviewed to completion, with findings, inside a sane budget.
 
