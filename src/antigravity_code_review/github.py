@@ -1,0 +1,86 @@
+"""Read a pull request from the GitHub API.
+
+Deliberately thin. The reviewer posts through the GitHub MCP server, so the only
+GitHub code here is what the collector needs before the agent starts, plus the
+runner-owned submit that MCP cannot do for us.
+
+Field names are taken from an observed payload rather than from documentation —
+`docs/probe-results.md` records the shape actually returned for the fixture PR.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+from typing import Any
+
+
+class GitHubError(RuntimeError):
+    """A GitHub API call failed. Raised rather than returning an empty result.
+
+    An empty changed-file list and a failed request look identical downstream,
+    and one of them would produce a confident review of nothing.
+    """
+
+
+def _api(path: str, method: str = "GET", body: dict[str, Any] | None = None) -> Any:
+    """Call the GitHub API via `gh`, which already holds the runner's token."""
+    cmd = ["gh", "api", "-X", method, path]
+    if body is not None:
+        cmd += ["--input", "-"]
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=True,
+            input=json.dumps(body) if body is not None else None,
+            env={**os.environ},
+        )
+    except subprocess.CalledProcessError as exc:
+        raise GitHubError(f"{method} {path} failed: {exc.stderr.strip()}") from exc
+    return json.loads(result.stdout) if result.stdout.strip() else None
+
+
+def get_pull_request(repo: str, number: int) -> dict[str, Any]:
+    """Fetch pull request metadata."""
+    return _api(f"repos/{repo}/pulls/{number}")
+
+
+def list_changed_files(repo: str, number: int) -> list[dict[str, Any]]:
+    """Fetch the changed-file list, following pagination.
+
+    Paginated deliberately: a PR touching more than 30 files would otherwise be
+    reviewed against a silently partial list, which is the same class of failure
+    as a silently truncated file.
+    """
+    files: list[dict[str, Any]] = []
+    page = 1
+    while True:
+        batch = _api(f"repos/{repo}/pulls/{number}/files?per_page=100&page={page}")
+        if not batch:
+            break
+        files.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return files
+
+
+def is_fork_pull_request(pr: dict[str, Any]) -> bool:
+    """True when the PR comes from a fork.
+
+    A fork PR gets a read-only token and no identity federation, so the reviewer
+    cannot authenticate to Vertex at all. Detected so the job can say that
+    plainly instead of failing on an authentication error nobody can interpret.
+    """
+    head_repo = (pr.get("head") or {}).get("repo") or {}
+    base_repo = (pr.get("base") or {}).get("repo") or {}
+    head_id = head_repo.get("full_name")
+    base_id = base_repo.get("full_name")
+    if head_id is None or base_id is None:
+        # Missing provenance is treated as a fork: refusing to review is cheap,
+        # and leaking a federated credential to an unknown head is not.
+        return True
+    return head_id != base_id
