@@ -295,6 +295,45 @@ An earlier run with `max_total_tokens=6,000` — below the root trajectory — *
 
 The subagent failed during model resolution, so these numbers are the spawn-and-fail path. Whether a *successful* subagent's tokens would also escape the ceiling cannot be determined on Vertex while the defect stands. The safe reading is the conservative one: do not rely on `max_total_tokens` to bound a delegating session.
 
+## ✅ Q5 / FR8 — retries are billed, and they escape `max_model_calls`
+
+The default is **4 model-output re-prompts**, each at full context. Two things needed measuring: whether they show up in usage, and whether they consume the dial that is supposed to bound them.
+
+Forcing the violation deterministically: a schema no output can satisfy — an integer required to be both `minimum: 10` and `maximum: 5`. Every attempt fails validation, so the retry path is exercised rather than hoped for. `probe/probe_retry_accounting.py`.
+
+| run | `max_retries` | `max_model_calls` | total tokens | `stop_reason` |
+|---|---|---|---|---|
+| baseline, satisfiable schema | 0 | 6 | **2,371** | `UNSPECIFIED` |
+| impossible schema | 4 | 3 | **9,856** | `UNSPECIFIED` |
+| impossible schema | 4 | 20 | **17,631** | `UNSPECIFIED` |
+
+### Retries are billed, and they are visible
+
+**Yes to usage.** A retried turn cost 7.4× the clean one. Retries are not free and they are not hidden — `total_usage` accounts for them. Any cost figure derived from `total_usage` is therefore correct on this axis.
+
+**The exposure is per turn, not per session.** One turn that trips the retry path costs up to five prompts at full context instead of one. A cost model reasoning from "turns × floor" understates a retrying turn by up to 4×.
+
+### 🔴 Retries do *not* consume `max_model_calls`
+
+The discriminator was `max_retries=4` against `max_model_calls=3`. If retries consumed model calls, five attempts could not fit in a budget of three, and the session would stop with `MAX_MODEL_CALLS_EXCEEDED`. **It did not** — it stopped `UNSPECIFIED`, having spent 9,856 tokens, roughly four times the single-attempt baseline. At least four attempts ran inside a three-call budget.
+
+This is the same shape of leak Q4 found in `max_total_tokens`: **a dial that looks like a bound and is not one.** Two of the five `BudgetConfig` dials are now known to be evaded by work the SDK performs on the caller's behalf.
+
+| dial | evaded by |
+|---|---|
+| `max_total_tokens` | subagent trajectories (Q4) |
+| `max_model_calls` | model-output retries (Q5) |
+
+### What this means for M3
+
+- **Tighten `ModelOutputRetryConfig(max_retries=...)` deliberately.** It is the only control over retry spend, because the call budget does not cover it. The default of 4 is the wrong default for a cost-bounded reviewer.
+- The M3 ceiling should be expressed on `max_input_tokens` and `max_output_tokens` — the dials nothing was observed to evade, and `max_input_tokens` is additionally the only one that halts *before* spending (FR6).
+
+### Two smaller observations
+
+- **The attempt count is not deterministic.** The same impossible schema cost 9,856 tokens under one budget and 17,631 under another. Retry counts vary run to run, so retry cost is a distribution, not a constant. Do not model it as a fixed multiplier.
+- **`get_last_structured_output()` returned `None` even on the satisfiable schema.** Not chased further, because Q13 already decided against `response_schema` in favour of incremental MCP posting — but it is one more reason that decision was right.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
