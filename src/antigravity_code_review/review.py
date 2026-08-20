@@ -22,7 +22,7 @@ from antigravity_code_review.github import (
     publish_pending_review,
 )
 from antigravity_code_review.guards import compare_allowlist, is_fork
-from antigravity_code_review.mcp_preflight import McpUnavailable, list_server_tools
+from antigravity_code_review.mcp_preflight import McpUnavailable, alist_server_tools
 from antigravity_code_review.usage import format_usage, read_usage
 
 
@@ -48,7 +48,7 @@ async def review(repo: str, number: int, project: str) -> int:
     # costs a subprocess rather than a model call and a full-context retry. The
     # SDK exposes no way to ask, so this speaks MCP to the container directly.
     try:
-        advertised = list_server_tools(
+        advertised = await alist_server_tools(
             GITHUB_MCP_IMAGE, os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
         )
         drift = compare_allowlist(GITHUB_MCP_TOOLS, advertised)

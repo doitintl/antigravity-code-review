@@ -32,6 +32,25 @@ class McpUnavailable(RuntimeError):
     """
 
 
+def _require_docker_and_image(image: str, timeout: int) -> None:
+    """Fail with a registry error rather than a protocol one.
+
+    An implicit pull writes its failure to the same stream as the MCP handshake,
+    so a missing image arrives disguised as "the server advertised no tools".
+    """
+    if shutil.which("docker") is None:
+        raise McpUnavailable("docker is not on PATH")
+    pull = subprocess.run(
+        ["docker", "pull", "--quiet", image],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if pull.returncode != 0:
+        raise McpUnavailable(f"could not pull {image}: {pull.stderr.strip()[:300]}")
+
+
 async def _list_tools(image: str, token: str) -> list[str]:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -49,23 +68,25 @@ async def _list_tools(image: str, token: str) -> list[str]:
 
 def list_server_tools(image: str, token: str, timeout: int = 120) -> list[str]:
     """Return the tool names the MCP server advertises."""
-    if shutil.which("docker") is None:
-        raise McpUnavailable("docker is not on PATH")
+    _require_docker_and_image(image, timeout)
 
-    # Pull explicitly. An implicit pull writes its failure to the same stream as
-    # the handshake, so a registry problem arrives disguised as a protocol one.
-    pull = subprocess.run(
-        ["docker", "pull", "--quiet", image],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    if pull.returncode != 0:
-        raise McpUnavailable(f"could not pull {image}: {pull.stderr.strip()[:300]}")
+    return asyncio.run(alist_server_tools(image, token, timeout, _skip_pull=True))
+
+
+async def alist_server_tools(
+    image: str, token: str, timeout: int = 120, *, _skip_pull: bool = False
+) -> list[str]:
+    """Async variant, for callers already inside an event loop.
+
+    The review path is async, and calling the sync wrapper from there raised
+    "asyncio.run() cannot be called from a running event loop" — caught only by
+    a real CI run, because nothing local exercises the async path.
+    """
+    if not _skip_pull:
+        _require_docker_and_image(image, timeout)
 
     try:
-        names = asyncio.run(asyncio.wait_for(_list_tools(image, token), timeout=timeout))
+        names = await asyncio.wait_for(_list_tools(image, token), timeout=timeout)
     except TimeoutError as exc:
         raise McpUnavailable(f"{image} did not answer within {timeout}s") from exc
     except Exception as exc:
