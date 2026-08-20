@@ -1379,6 +1379,123 @@ confident-sounding guess and does not try to. A credibility heuristic over prose
 would be the fourth instrument in this document to produce a headline number of
 its own.
 
+## ✅ M5 — the first review-quality numbers this project is entitled to
+
+`google-antigravity==0.1.12`, `gemini-3.7-flash`, global endpoint, 2026-08-20.
+One configuration — the reviewer as it ships — run **3 times against each of 4
+fixtures**. 12 runs, 11 complete, **$3.4765**.
+
+| fixture | classes | recall across 3 runs | cost/run |
+|---|---|---|---|
+| planted, 2 files 🔸 | 3 local, 2 security | **2–5 of 5** | $0.10 |
+| real A, 7 files | 3 cross-file, 1 convention | **0 of 4** | $0.36 |
+| real B, 21 files | 4 cross-file | **0–1 of 4** | $0.42 |
+| real C, 6 files | 4 convention, 2 cross-file, 1 local | **0 of 7** | $0.28 |
+
+**By defect class, across every complete run:**
+
+| class | hits / opportunities |
+|---|---|
+| security | **4 / 6** |
+| local | **5 / 11** |
+| cross-file | **2 / 25** |
+| convention | **0 / 11** |
+
+### What is now established rather than asserted
+
+**The reviewer is near-blind to cross-file and convention defects, and this is
+stable rather than noisy.** 2 of 25 and 0 of 11, across three pull requests and
+two repositories. Every earlier version of this claim was a single sample and
+could have been a bad draw. It is not.
+
+**The variance lives where the reviewer succeeds, not where it fails.** On the
+planted fixture the same code and configuration produced 2, 5 and 2 of 5 — the
+judge emitted 2, 5 and 2 findings. The real fixtures do not wobble; they are
+flat. That is a sharper statement than "the reviewer is non-deterministic".
+
+**Cost is inverted against value.** ~$0.36 to find nothing on a real pull
+request, ~$0.10 to find most things on a planted one.
+
+**One novel defect reproduced.** A missing business-unit-to-Slack-channel
+mapping, reported by neither the reference reviewer nor the fixture, and
+independently surfaced again here. It is kept as `novel` rather than discarded,
+which is why it survived to be noticed twice.
+
+### 🔴 The harness produced a wrong headline number, and this is the fourth time
+
+The first report said **0/4 on every run** of the 21-file fixture. **It was
+wrong.** Two of the three runs had identified a known defect and anchored the
+comment at line **989**; the fixture recorded **1005**, and a three-line
+tolerance called it a miss.
+
+Both numbers are the same defect. The reference reviewer's own text describes
+the block as **`989-1005`** — it hung its GitHub comment at the end of the span,
+ours pointed at the start. **The curation kept the anchor and threw the span
+away.**
+
+That is the same class of error as the three already recorded here — comparing
+the wrong commit, reading a budget stop as a clean review, keyword-matching a
+paraphrase — except this time the instrument was the harness built to prevent
+them. It was caught only because unmatched findings are kept as `novel` instead
+of discarded: the "novel" list contained the fixture's own defect, twice.
+
+Fixed by making a defect a **span** and matching on **overlap** rather than on
+distance between anchors. Recovering the ranges the reference text already named
+corrected **six defects across three fixtures**.
+
+**No re-run was needed.** `evals/rescore.py` re-scores saved runs against
+corrected fixtures: the findings a run produced are facts about that run, and
+what they are compared against is a separate thing that can be wrong on its own.
+Re-running would have cost another $3.48 to measure the reviewer again in order
+to fix a defect in the harness.
+
+Corrected: **cross-file 0/25 → 2/25**, and the AC8 fixture from *never* to
+*defect #1 found in 2 of 3 runs*.
+
+### 🔸 One fixture's numbers are much weaker than the others', and the harness says so
+
+The planted fixture is a **41-line file with five defects**. With a ±3 line
+tolerance, **71% of its lines sit within reach of some defect** — against 0.7%,
+1.5% and 2.1% for the three real ones. Findings placed at arbitrary lines with
+their text replaced by nonsense score **4 of 5** there.
+
+So `5/5` on that fixture and `1/4` on a real one are not comparable numbers, and
+a report printing both in one column invites the reader to treat them alike.
+`run_eval.py` now measures this before every run and flags such a fixture
+`SOFT`. Two of its defect pairs are also closer than the tolerance can separate,
+which is reported for the same reason.
+
+### FR5 earned its place on the first real sweep
+
+Run 12 hit a **429 `RESOURCE_EXHAUSTED`** on the judge. It is recorded as
+**incomplete**, excluded from recall, and still charged its $0.1596 — rather
+than counted as a fixture-wide zero. Under the pre-M5 practice it would have
+been a 0/7 and would have looked exactly like a recall failure.
+
+### What this does not establish
+
+- **Three of four fixtures come from one repository.** Thirty-plus were scanned;
+  no other carried independently-produced reference reviews.
+- **15 of 20 defects were never executed.** Their reachability rests on the
+  reference reviewer's recorded trigger path, which is better than our reading
+  and is not the same claim as running them.
+- **The planted fixture has no reference review**, so the scorer is unvalidated
+  against it. Its numbers rest on the scorer being right — the assumption the
+  validation gate exists to stop making.
+- **One configuration.** Whether the judge helps at all, and whether
+  `thinking_level` was rejected on noise, are separate arms.
+
+### The scorer was validated before any of the above was believed
+
+Two checks, per fixture with a reference review: can the scorer find the known
+defects in that review, and does it still find them when **every claim is
+replaced by text sharing no vocabulary with any review comment**. Result:
+**15/15 and 15/15**.
+
+The old keyword scorer was reconstructed and run against the same data as a
+control: **4/4 on the reference text, 0/4 with the words replaced.** The
+published false zero, reproduced on demand.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
