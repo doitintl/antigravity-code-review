@@ -12,7 +12,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from google.antigravity import Agent, types
@@ -96,7 +96,10 @@ async def review(repo: str, number: int, project: str) -> int:
     # nobody submits is a review nobody can read.
     # Price what was spent, per turn, at the tier each turn reported. Done
     # before publishing so the cost line can travel with the review body.
-    priced = price_session(collector.turns, FLASH, datetime.now(tz=UTC).date())
+    # timezone.utc rather than datetime.UTC: the latter is 3.11+ and this
+    # package declares requires-python >=3.10.
+    today = datetime.now(tz=timezone.utc).date()
+    priced = price_session(collector.turns, FLASH, today)
     line = cost_line(priced, tool_calls=collector.tool_calls)
     print(line)
 
