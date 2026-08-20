@@ -28,20 +28,20 @@ from antigravity_code_review.evalharness.fixtures import (
 )
 
 GOOD_DEFECT = {
-    "id": "gated-tag-page-types",
-    "file": "src/site-page-editor-shell.tsx",
+    "id": "flag-read-narrower-than-written",
+    "file": "src/editor/shell.tsx",
     "line": 214,
     "class": "cross-file",
-    "description": "gatedContentTag is settable on all seven page types but read for two",
-    "reachable": "editor UI renders the field for every pageType; findGatedContentCta filters",
+    "description": "the flag is settable on all seven kinds and read for only two",
+    "reachable": "the editor renders the field for every kind; the query filters to two",
 }
 
 GOOD_FIXTURE = {
-    "name": "draft-538",
-    "repo": "doitbse/draft",
-    "pr": 538,
+    "name": "example-pr",
+    "repo": "acme/widgets",
+    "pr": 42,
     "base_sha": "1111111111111111111111111111111111111111",
-    "head_sha": "5349acd3aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "head_sha": "2222222222222222222222222222222222222222",
     "defects": [GOOD_DEFECT],
 }
 
@@ -56,8 +56,8 @@ class TestTheHappyPath:
     def test_a_complete_fixture_loads(self):
         f = load_fixture(GOOD_FIXTURE)
         assert isinstance(f, Fixture)
-        assert f.repo == "doitbse/draft"
-        assert f.head_sha.startswith("5349acd3")
+        assert f.repo == "acme/widgets"
+        assert f.head_sha.startswith("22222222")
         assert len(f.defects) == 1
 
     def test_defects_are_typed_records_not_dicts(self):
@@ -70,7 +70,7 @@ class TestTheHappyPath:
         """A harness that mutates its own fixture mid-run measured nothing."""
         f = load_fixture(GOOD_FIXTURE)
         with pytest.raises(dataclasses.FrozenInstanceError):
-            f.head_sha = "deadbeef"  # type: ignore[misc]
+            f.head_sha = "deadbee"  # type: ignore[misc]
 
 
 class TestPinnedByCommit:
@@ -102,15 +102,15 @@ class TestPinnedByCommit:
 
     def test_a_sha_too_short_to_be_unambiguous_is_rejected(self):
         with pytest.raises(FixtureError, match="SHA"):
-            load_fixture(_fixture(head_sha="5349ac"))
+            load_fixture(_fixture(head_sha="2222ab"))
 
     def test_an_abbreviated_sha_of_seven_or_more_is_accepted(self):
-        f = load_fixture(_fixture(head_sha="5349acd3"))
-        assert f.head_sha == "5349acd3"
+        f = load_fixture(_fixture(head_sha="2222abc"))
+        assert f.head_sha == "2222abc"
 
     def test_shas_are_normalised_to_lowercase(self):
-        f = load_fixture(_fixture(head_sha="5349ACD3"))
-        assert f.head_sha == "5349acd3"
+        f = load_fixture(_fixture(head_sha="2222ABC"))
+        assert f.head_sha == "2222abc"
 
     def test_the_pr_number_is_optional_metadata_not_the_identifier(self):
         obj = _fixture()
@@ -180,7 +180,7 @@ class TestReachability:
 
     def test_the_evidence_is_kept_not_merely_checked(self):
         d = load_fixture(GOOD_FIXTURE).defects[0]
-        assert "findGatedContentCta" in d.reachable
+        assert "the query filters to two" in d.reachable
 
 
 class TestFixtureIdentity:
@@ -198,8 +198,8 @@ class TestFixtureIdentity:
         """Executed evidence and recorded evidence are not the same claim, so the
         harness has to be able to tell them apart."""
         assert load_fixture(GOOD_FIXTURE).reachability_probe is None
-        f = load_fixture(_fixture(reachability_probe="agy-fixture-1-reach.py"))
-        assert f.reachability_probe == "agy-fixture-1-reach.py"
+        f = load_fixture(_fixture(reachability_probe="example-reach.py"))
+        assert f.reachability_probe == "example-reach.py"
 
     def test_defects_by_class_groups_for_reporting(self):
         """FR6: recall is reported per class, so the fixture can answer that."""

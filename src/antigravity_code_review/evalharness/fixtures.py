@@ -4,11 +4,11 @@ A fixture names a repository, **two commit SHAs**, and the defects known to be
 present in the change between them. It never identifies the code by pull request
 number alone.
 
-That rule is not fastidiousness. The first comparison against `doitbse/draft#538`
-ran at the pull request *head*, which was two fix commits later than the code
-`claude[bot]` had reviewed. "We found nothing they found" was measuring different
-source, and it read as a recall failure. A pull request number is a moving
-target; a SHA is the review.
+That rule is not fastidiousness. The first comparison this project ran against a
+real pull request used the *head*, which by then was two fix commits later than
+the code the reference reviewer had seen. "We found nothing they found" was
+measuring different source, and it read as a recall failure. A pull request
+number is a moving target; a SHA is the review.
 
 The second rule is that a defect carries **evidence that it can manifest**. M1's
 fixture planted an unconditional `return True` that was unreachable, because an
