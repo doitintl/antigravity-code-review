@@ -184,3 +184,29 @@ class TestCrossFileReasoning:
 
     def test_permits_checking_before_dismissing(self, cfg):
         assert "good use of a tool call" in cfg.system_instructions.lower()
+
+
+class TestContractPasses:
+    """Contract questions add cross-file recall; they must not remove local recall."""
+
+    def test_a_local_defect_pass_runs_first(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        assert CONTRACT_PASSES[0][0] == "defects in the changed code"
+
+    def test_the_local_pass_asks_about_security(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        q = CONTRACT_PASSES[0][1].lower()
+        for topic in ("security", "credential", "query", "swallowed"):
+            assert topic in q
+
+    def test_the_local_pass_forbids_reframing_a_credential(self):
+        """The asymmetry lens called a committed API key 'unused configuration'."""
+        from antigravity_code_review.config import CONTRACT_PASSES
+        assert "do not describe it as unused configuration" in CONTRACT_PASSES[0][1]
+
+    def test_the_contract_questions_survive(self):
+        from antigravity_code_review.config import CONTRACT_PASSES
+        names = [n for n, _ in CONTRACT_PASSES]
+        assert "write/read asymmetry" in names
+        assert "identifier uniqueness" in names
+        assert "side-effect frequency" in names
