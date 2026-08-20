@@ -603,6 +603,86 @@ M5 should instead measure:
 
 And fixtures need a reachability check before a defect counts as planted.
 
+## ✅ Q10 closed — Vertex rates, from the primary source
+
+The Agent Platform pricing page resisted three fetch attempts during M0, which
+is why Q10 stood open with the rates corroborated only from AI Studio. It
+resolved on 2026-08-20.
+
+**The figures were right.** $0.75/$3.75 introductory through 2026-12-31,
+$1.50/$7.50 from 2027-01-01, cached input at one tenth. The table did not need
+correcting; it needed the citation it was missing.
+
+The primary source corrected two things around it:
+
+- **Priority and flex rates *are* published.** M0 recorded that "only standard
+  rates are published" and concluded unknown tiers fall under the unknown-rate
+  rule. All three tiers are listed, so all three are priced.
+- **Region changes the rate.** Non-global endpoints cost ~10% more. This project
+  pins `location="global"`, so the assumption is now explicit rather than lucky.
+
+It also confirms from primary source that output covers **"response and
+reasoning"** — thinking tokens billing at the output rate is now a citation
+rather than an inference from a docstring.
+
+## M2 — what a review actually costs
+
+Measured on the fixture PR, `0.1.12`, `gemini-3.7-flash`, global endpoint:
+
+```
+Reviewed in 1 turn · 79,074 in (57% cached) · 4,163 out · 11 tool calls · ~$0.0447
+```
+
+**About 4–7 cents per review**, not the ~$0.18 estimated in M1. That earlier
+figure was wrong twice over: it priced at the standard rate rather than the
+introductory one, and it ignored caching entirely. Both errors pushed the same
+way, which is what an uncited estimate tends to do.
+
+### Three bugs the real runs found
+
+**The service-tier values are lowercase.** The SDK emits `ServiceTier.STANDARD`
+with value `"standard"`; the rate table used `"STANDARD"`, so the lookup never
+matched and **every review reported `cost unknown`**.
+
+That it surfaced at all is the unknown-means-unknown rule earning its place. Had
+the table fallen back to a neighbouring rate, every review would have been
+silently mispriced and the figure would have looked entirely plausible. The rule
+was written as a principle in `cost-tracking.md`; this is it working as an
+incident.
+
+**`PostTurnArgs` carries no usage.** It has exactly one field, `response_text`,
+verified against the proto descriptor. A hook-based design looking for per-turn
+usage in the payload finds nothing and silently records nothing. Usage has to be
+read from the conversation, which only exists after the `Agent` is constructed —
+after the hooks are registered.
+
+**A "turn" is not a "model call".** The cost line reported *"1 model call"* for a
+review that made eleven tool calls. `post_turn` fires once per `chat()`, and a
+review spends many model calls inside a single turn working its tool loop. The
+token totals are cumulative and were always right; the label was false, and
+false in the direction that makes a reviewer look cheaper than it is. **The SDK
+exposes no per-model-call count** — `trajectory_usages` is per trajectory.
+
+### 🔴 The exit criterion is half met
+
+*"Every review reports its cost"* — **met**. Cost line on the review, and
+`review-cost.json` uploaded on every run including stopped ones.
+
+*"…and the same figure can be found in the billing export"* — **not met**.
+`sascha-playground-doit` has **no billing-export dataset**; `bq ls` across 200
+datasets finds nothing billing-related. Without an export there is no
+independent figure to reconcile against.
+
+This is recorded as unmet rather than waved through, because the whole argument
+for two sources is that self-reported cost is unverified cost. `cost-tracking.md`
+is blunt about it: reporting your own cost without an independent check is how a
+number everyone quotes turns out to have been wrong for a month — and this track
+has already produced two wrong numbers that looked fine.
+
+**To close it:** enable a BigQuery billing export on the billing account, wait
+for a review to appear in it, and compare. Until then the figure is arithmetic
+from a cited rate, which is better than a guess and is not the same as verified.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
