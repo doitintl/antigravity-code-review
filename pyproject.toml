@@ -20,7 +20,7 @@ build-backend = "hatchling.build"
 packages = ["src/antigravity_code_review"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "evals"]
 testpaths = ["tests"]
 
 [tool.coverage.run]
