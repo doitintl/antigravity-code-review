@@ -26,14 +26,18 @@ REVIEW_TOOLS = [
 ]
 
 # `search_code` is deliberately absent: every advertised tool is a per-turn tax,
-# and SEARCH_DIR already covers the checkout. `list_resources` is present
-# because M0 found that omitting it costs one denied call per run.
+# and SEARCH_DIR already covers the checkout.
+#
+# `list_resources` was here on the roadmap's advice — "allow it explicitly, or
+# accept one wasted denied call per run". The preflight's first real run showed
+# the server does not offer it at all: `list_resources` is an MCP *protocol*
+# method, not a GitHub tool. The advice was built on a tool that does not exist,
+# and configuring it would have failed the allowlist check on every run.
 GITHUB_MCP_TOOLS = [
     "pull_request_read",
     "pull_request_review_write",
     "add_comment_to_pending_review",
     "get_file_contents",
-    "list_resources",
 ]
 
 GITHUB_MCP_IMAGE = "ghcr.io/github/github-mcp-server:v0.27.0"

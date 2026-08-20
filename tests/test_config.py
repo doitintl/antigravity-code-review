@@ -97,9 +97,13 @@ class TestMcpServer:
     def test_search_code_is_excluded(self):
         assert "search_code" not in GITHUB_MCP_TOOLS
 
-    def test_list_resources_is_explicit(self):
-        """Omitting it costs one denied call per run."""
-        assert "list_resources" in GITHUB_MCP_TOOLS
+    def test_list_resources_is_not_configured(self):
+        """The server does not offer it; it is an MCP protocol method, not a tool.
+
+        Verified against the real server's tools/list, which advertises 40 tools
+        and no list_resources. Configuring it failed the preflight every run.
+        """
+        assert "list_resources" not in GITHUB_MCP_TOOLS
 
     def test_allowlist_appears_in_both_layers(self, cfg):
         server = cfg.mcp_servers[0]
