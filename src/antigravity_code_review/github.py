@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from typing import Any
 
 
@@ -129,3 +130,49 @@ def publish_pending_review(
     body = cost_line or "### Code review"
     submit_review(repo, number, review["id"], body)
     return True
+
+def post_review(repo: str, number: int, findings: list[dict[str, Any]], body: str) -> int:
+    """Post one review carrying every finding, and submit it.
+
+    The runner posts, not the agent. M1 had the agent post incrementally through
+    the GitHub MCP server, and that cost turns it did not have: it invented a
+    `create_pending` method, tripped "only one pending review per pull request"
+    whenever a run failed part-way, and duplicated comments across retries.
+
+    Posting from structured findings is one API call, cannot duplicate, and
+    cannot leave a pending review behind — which is Q8's failure mode addressed
+    by removing the state rather than rescuing it.
+
+    A comment whose line GitHub rejects is retried at file level rather than
+    dropped, because a finding nobody sees is worse than one attached loosely.
+    """
+    comments = []
+    for f in findings:
+        comment: dict[str, Any] = {"path": f["file"], "body": f["claim"]}
+        if f.get("line"):
+            comment["line"] = f["line"]
+            comment["side"] = "RIGHT"
+        else:
+            comment["subject_type"] = "file"
+        comments.append(comment)
+
+    try:
+        _api(
+            f"repos/{repo}/pulls/{number}/reviews",
+            method="POST",
+            body={"body": body, "event": "COMMENT", "comments": comments},
+        )
+        return len(comments)
+    except GitHubError as exc:
+        # A rejected line number should not cost the whole review.
+        print(f"inline comments rejected ({exc}); posting the summary alone", file=sys.stderr)
+        detail = "\n".join(
+            f"- `{f['file']}`" + (f":{f['line']}" if f.get("line") else "") + f" — {f['claim']}"
+            for f in findings
+        )
+        _api(
+            f"repos/{repo}/pulls/{number}/reviews",
+            method="POST",
+            body={"body": body + ("\n\n" + detail if detail else ""), "event": "COMMENT"},
+        )
+        return 0
