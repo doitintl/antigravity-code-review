@@ -19,8 +19,12 @@ from antigravity_code_review.evalharness.runner import (
 
 
 class TestConfigurationsAreActuallyComparable:
-    def test_both_configurations_are_registered_under_their_own_names(self):
-        assert set(CONFIGURATIONS) == {"contract-passes+judge", "contract-passes-only"}
+    def test_every_configuration_is_registered_under_its_own_name(self):
+        assert set(CONFIGURATIONS) == {
+            "contract-passes+judge",
+            "contract-passes-only",
+            "contract-passes+judge+high-thinking",
+        }
         assert all(name == cfg.name for name, cfg in CONFIGURATIONS.items())
 
     def test_they_ask_the_same_questions(self):
@@ -60,6 +64,27 @@ class TestConfigurationsAreActuallyComparable:
         configuration that dropped it would measure that regression again."""
         first = CONTRACT_PASSES_WITH_JUDGE.passes[0][0]
         assert "defects in the changed code" == first
+
+    def test_the_high_thinking_arm_varies_only_the_reasoning_budget(self):
+        """thinking_level=HIGH was rejected on n=1. Re-testing it means changing
+        nothing else, or the result is about something else."""
+        from google.antigravity import types
+
+        from antigravity_code_review.evalharness.runner import CONTRACT_PASSES_HIGH_THINKING
+
+        assert CONTRACT_PASSES_HIGH_THINKING.thinking_level is types.ThinkingLevel.HIGH
+        assert CONTRACT_PASSES_HIGH_THINKING.passes == CONTRACT_PASSES_WITH_JUDGE.passes
+        assert (
+            CONTRACT_PASSES_HIGH_THINKING.pass_instructions
+            == CONTRACT_PASSES_WITH_JUDGE.pass_instructions
+        )
+        assert (
+            CONTRACT_PASSES_HIGH_THINKING.judge_instructions
+            == CONTRACT_PASSES_WITH_JUDGE.judge_instructions
+        )
+
+    def test_the_default_arm_leaves_the_reasoning_budget_unset(self):
+        assert CONTRACT_PASSES_WITH_JUDGE.thinking_level is None
 
     def test_a_configuration_is_frozen(self):
         import dataclasses

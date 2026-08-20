@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from google.antigravity import types
+
 from antigravity_code_review.collect_usage import UsageCollector
 from antigravity_code_review.collector import format_file_line
 from antigravity_code_review.config import (
@@ -72,6 +74,7 @@ class Configuration:
     passes: tuple[tuple[str, str], ...] = tuple(CONTRACT_PASSES)
     pass_instructions: str = PASS_INSTRUCTIONS
     judge_instructions: str | None = JUDGE_INSTRUCTIONS
+    thinking_level: types.ThinkingLevel | None = None
 
 
 CONTRACT_PASSES_WITH_JUDGE = Configuration(name="contract-passes+judge")
@@ -86,7 +89,23 @@ CONTRACT_PASSES_NO_JUDGE = Configuration(
     judge_instructions=None,
 )
 
-CONFIGURATIONS = {c.name: c for c in (CONTRACT_PASSES_WITH_JUDGE, CONTRACT_PASSES_NO_JUDGE)}
+# thinking_level=HIGH was tried once, on one pull request, and moved nothing:
+# 0/4, at roughly 1.5x the cost. That was a single sample, and run-to-run
+# variance on this fixture set is already larger than one finding — so "four
+# times the reasoning does not help" is a claim the evidence never supported.
+CONTRACT_PASSES_HIGH_THINKING = Configuration(
+    name="contract-passes+judge+high-thinking",
+    thinking_level=types.ThinkingLevel.HIGH,
+)
+
+CONFIGURATIONS = {
+    c.name: c
+    for c in (
+        CONTRACT_PASSES_WITH_JUDGE,
+        CONTRACT_PASSES_NO_JUDGE,
+        CONTRACT_PASSES_HIGH_THINKING,
+    )
+}
 
 
 def _gh(path: str) -> Any:
@@ -178,6 +197,7 @@ async def run_once(
         passes=configuration.passes,
         pass_instructions=configuration.pass_instructions,
         judge_instructions=configuration.judge_instructions,
+        thinking_level=configuration.thinking_level,
     )
 
     outcome = combine(outcomes)

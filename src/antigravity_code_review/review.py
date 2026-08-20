@@ -82,12 +82,33 @@ def is_trivial(files: list[dict[str, Any]]) -> str | None:
     return None
 
 
-def _agent_config(project: str, workspace: str, instructions: str, patches: dict, hooks: list):
+def _agent_config(
+    project: str,
+    workspace: str,
+    instructions: str,
+    patches: dict,
+    hooks: list,
+    thinking_level: types.ThinkingLevel | None = None,
+):
+    # thinking_level rides on the endpoint, not on LocalAgentConfig: the SDK
+    # exposes it only through ModelTarget -> VertexEndpoint -> GeminiModelOptions.
+    # Verified against 0.1.12 by reading models.py; there is no top-level field.
+    model: Any = FLASH
+    if thinking_level is not None:
+        model = types.ModelTarget(
+            name=FLASH,
+            endpoint=types.VertexEndpoint(
+                project=project,
+                location=LOCATION,
+                options=types.GeminiModelOptions(thinking_level=thinking_level),
+            ),
+        )
+
     return LocalAgentConfig(
         vertex=True,
         project=project,
         location=LOCATION,
-        model=FLASH,
+        model=model,
         system_instructions=instructions,
         tools=[view_file, make_view_diff(patches)],
         hooks=hooks,
@@ -142,6 +163,7 @@ async def run_passes(
     passes: Sequence[tuple[str, str]] = CONTRACT_PASSES,
     pass_instructions: str = PASS_INSTRUCTIONS,
     judge_instructions: str | None = JUDGE_INSTRUCTIONS,
+    thinking_level: types.ThinkingLevel | None = None,
 ) -> tuple[list[dict[str, Any]], list[RunOutcome]]:
     """Run the passes and the judge, and return findings plus a per-stage outcome.
 
@@ -160,7 +182,9 @@ async def run_passes(
 
     for name, question in passes:
         print(f"[pass] {name}")
-        cfg = _agent_config(project, workspace, pass_instructions, patches, collector.hooks())
+        cfg = _agent_config(
+            project, workspace, pass_instructions, patches, collector.hooks(), thinking_level
+        )
         prompt = f"{subject}:\n{listing}\n\nYOUR AUDIT QUESTION:\n{question}\n"
         try:
             text, stop = await _run(cfg, prompt, collector)
@@ -182,7 +206,9 @@ async def run_passes(
     findings: list[dict[str, Any]] = []
     if reports and judge_instructions:
         print("[judge] deciding which described properties are defects")
-        cfg = _agent_config(project, workspace, judge_instructions, patches, collector.hooks())
+        cfg = _agent_config(
+            project, workspace, judge_instructions, patches, collector.hooks(), thinking_level
+        )
         joined = "AUDIT REPORT:\n\n" + "\n\n".join(reports)[:200_000]
         try:
             text, stop = await _run(cfg, joined, collector)
