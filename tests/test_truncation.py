@@ -42,6 +42,19 @@ class TestOverTheCap:
         text = "IMPORTANT_FIRST_LINE\n" + "x" * (DEFAULT_CAP_BYTES * 2)
         assert "IMPORTANT_FIRST_LINE" in truncate(text, "big.txt")
 
+    def test_marker_comes_first_so_it_survives_downstream_truncation(self):
+        """The harness truncates tool output again, and we cannot configure it.
+
+        A trailing marker gets cut off, and a live run proved it: the model saw
+        only the harness's generic notice and never learned which file was cut.
+        """
+        out = truncate("x" * (DEFAULT_CAP_BYTES * 2), "big.json")
+        assert out.startswith("[TRUNCATED:")
+
+    def test_marker_survives_an_aggressive_downstream_cut(self):
+        out = truncate("x" * (DEFAULT_CAP_BYTES * 2), "docs/openapi.json")
+        assert "docs/openapi.json" in out[:300]
+
 
 class TestCapsBySizeNotByName:
     """A denylist only covers the generated files someone already imagined."""
