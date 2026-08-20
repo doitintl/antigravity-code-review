@@ -18,13 +18,13 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
     private; only the curation tooling and the format are committed. Stated in `evals/README.md`.
   - Only one repository has independently-reviewed pull requests (30+ scanned), so the second
     repository is the planted M1 fixture — and it is the set's only local/security coverage.
-- [~] **Task: Reachability evidence is checked, not merely present** *(logic)* — split from the
-      combined task per [`../../workflow.md`](../../workflow.md): "a task that looks like both is
-      two tasks"
-  - [ ] A defect must carry evidence of reachability
-  - [ ] A placeholder is not evidence — reject `TODO`, `yes`, `n/a` and their kin
-  - [ ] Gate a whole set before a run, so a weak fixture cannot quietly produce a number
-- [ ] **Task: Verify each recorded defect can actually manifest** *(integration)*
+- [x] **Task: Reachability evidence is checked, not merely present** *(logic)* — `7684c96` — split
+      from the combined task per [`../../workflow.md`](../../workflow.md): "a task that looks like
+      both is two tasks"
+  - [x] A defect must carry evidence of reachability
+  - [x] A placeholder is not evidence — reject `TODO`, `yes`, `n/a` and their kin
+  - [x] Gate a whole set before a run, so a weak fixture cannot quietly produce a number
+- [~] **Task: Verify each recorded defect can actually manifest** *(integration)*
   - [ ] Execute the planted fixture's defects, as M1's `return True` could not be
   - [ ] Say plainly which fixtures rest on executed evidence and which on a recorded trigger path, as M1's `return True` could not
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
