@@ -68,24 +68,6 @@ def list_changed_files(repo: str, number: int) -> list[dict[str, Any]]:
     return files
 
 
-def is_fork_pull_request(pr: dict[str, Any]) -> bool:
-    """True when the PR comes from a fork.
-
-    A fork PR gets a read-only token and no identity federation, so the reviewer
-    cannot authenticate to Vertex at all. Detected so the job can say that
-    plainly instead of failing on an authentication error nobody can interpret.
-    """
-    head_repo = (pr.get("head") or {}).get("repo") or {}
-    base_repo = (pr.get("base") or {}).get("repo") or {}
-    head_id = head_repo.get("full_name")
-    base_id = base_repo.get("full_name")
-    if head_id is None or base_id is None:
-        # Missing provenance is treated as a fork: refusing to review is cheap,
-        # and leaking a federated credential to an unknown head is not.
-        return True
-    return head_id != base_id
-
-
 def find_pending_review(repo: str, number: int) -> dict[str, Any] | None:
     """Return this actor's PENDING review on the PR, if one exists.
 
