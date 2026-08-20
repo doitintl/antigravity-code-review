@@ -888,6 +888,60 @@ that is run, the cause is a hypothesis and is recorded as one.
 inside a sane budget, which it could not do before. **What cannot:** that it
 finds anything worth reading there.
 
+## ✅ Why the reviewer found nothing: scope, not capability
+
+The diagnostic that settles it. Three conditions on the same code, at the commit
+`claude[bot]` reviewed.
+
+| condition | scope | result |
+|---|---|---|
+| full review, strict bar | 21 changed files | **no findings** |
+| pointed question, strict bar | 2 files | **found it exactly**, with line references |
+| open question, strict bar | 2 files | **found it** — plus a bug `claude[bot]` did not report |
+| open question, **loose** bar | 2 files | **found it** |
+
+**The model can do the reasoning.** Asked "for which page types is
+`gatedContentTag` read, and for which can an editor set it — are those the same
+set?", it answered precisely: read for `landing` and `hubspot-landing` only, and
+settable on all seven. That is `claude[bot]`'s finding, independently reproduced.
+
+**The precision bar is not the cause.** The strict instructions — do-not-flag
+list, "if you are not certain, do not flag it" — found it at two files. Loosening
+to "err on the side of reporting" changed nothing about whether it was found.
+
+**The variable is scope.** Two files: found. Twenty-one files: silent.
+
+### A trap this diagnostic fell into first
+
+The first two conditions returned **empty text**, which reads exactly like "no
+findings". They were budget stops — `MAX_OUTPUT_TOKENS_EXCEEDED` against a 3,000
+cap set for economy. Q8 predicted this precisely: *a budget stop preserves usage
+and returns empty text.*
+
+**An empty review is indistinguishable from a clean review** unless the stop
+reason is checked. The runner does check it, and the review body says so — but a
+diagnostic written in haste did not, and drew the opposite conclusion for two
+runs. Anything reading these results must check `stop_reason` first.
+
+### What this implies for the design
+
+Anthropic's `code-review` plugin fans out to four agents with narrow mandates and
+then validates each finding. Read against this measurement, **narrow scope is not
+a parallelism optimisation — it is the mechanism that makes findings appear at
+all.**
+
+We cannot copy the fan-out: subagents fail on Vertex and escape `BudgetConfig`
+(Q4). But the property that matters is scope per pass, not parallelism, and that
+is reachable sequentially — **several small sessions instead of one large one.**
+
+That also fixes the accumulation problem by construction. A session over three
+files cannot grow the context that a session over thirty does, so batching
+addresses recall and cost with the same change.
+
+**Next:** batch by file group and measure recall against `draft#538` at
+`5349acd3`, where four findings are known and one is now independently
+reproduced.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

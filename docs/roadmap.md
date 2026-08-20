@@ -79,6 +79,8 @@ review a 30-line change, reading the wrong 128 KB, and learning nothing. See
 - [ ] **Verification pass before publishing** — separate generating a finding from confirming it. Anthropic fans this out to a subagent per issue; subagents are unusable here (M0), so this is a second pass in one session
 - [ ] **Gate on triviality**, not only forks and authorisation. A one-line typo fix should not cost a review
 
+- [ ] **Batch the review by file group.** The diagnostic shows recall is a function of scope: two files finds the known defect, twenty-one finds nothing. Anthropic's fan-out achieves narrow scope through parallel subagents; subagents are unusable here (Q4), but the property that matters is scope per pass, and several small sessions get it sequentially — and bound context growth by construction
+
 **Exit:** a real 30-file pull request reviewed to completion, with findings, inside a sane budget.
 
 ## M3 — A dollar ceiling
