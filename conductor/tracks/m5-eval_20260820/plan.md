@@ -75,8 +75,13 @@ runner is also the expensive half, and it should not be written against a guess.
   - [x] Incomplete runs listed separately — and still charged for
   - [x] **`render()` contains no percent sign**, and a test enforces it
 - [~] **Task: Runner** *(integration)*
-  - [ ] Check out a fixture at its head SHA, run a named configuration, collect findings and cost
-  - [ ] Repeat N times (N ≥ 3) per configuration
+  - [x] Check out a fixture at its head SHA, run a named configuration, collect findings and cost —
+        validated end to end: **4/5 found, complete, `$0.0780`, 123,095 tokens, 53 tool calls**
+  - [x] Checkout is blobless and cached by `(repo, sha)` — ~5s cold for a 2,400-file tree, free after
+  - [x] Drives `review.run_passes` rather than a copy — a harness that reimplements the pipeline
+        measures the reimplementation
+  - [x] `evals/run_eval.py` gates on reachability **and** scorer validation before any model call
+  - [~] Repeat N times (N ≥ 3) per configuration — sweep running
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 4 — Replace the single-sample numbers
