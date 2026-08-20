@@ -92,7 +92,7 @@ runner is also the expensive half, and it should not be written against a guess.
     recorded as a point where the reference text had named a span. Caught only because unmatched
     findings are kept as `novel` rather than discarded. Corrected cross-file 0/25 → 2/25, for `$0`
 
-## Phase 4 — Replace the single-sample numbers
+## Phase 4 — Replace the single-sample numbers [checkpoint: e90815c]
 
 - [x] **Task: Measure the contract-pass configuration properly** *(integration)* — `72e18f9`
   - [x] Run it ≥3 times over all fixtures — 12 runs, 4 fixtures, 2 repositories, `$3.4765`
@@ -131,4 +131,7 @@ runner is also the expensive half, and it should not be written against a guess.
 - [x] **Task: Write up the evidence** *(chore)* — `e90815c`
   - [x] Record results with the SDK version (`0.1.12`, `gemini-3.7-flash`, global, 2026-08-20);
         check off M5 in `docs/roadmap.md`, with the two unmet items named rather than dropped
-- [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
+- [x] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md)) — `e90815c`
+  - 438 tests pass; all seven logic modules at 100%; ruff and mypy clean
+  - **All eight acceptance criteria checked individually — all pass**
+  - **24 runs across two configurations, `$5.85` total**
