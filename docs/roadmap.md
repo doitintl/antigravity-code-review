@@ -10,16 +10,16 @@ Everything else assumes Workload Identity Federation → Application Default Cre
 
 Both published implementations authenticate with an API key secret, so **nobody has demonstrated the WIF path in CI**. The SDK side is supported (`vertex=True` with ADC, and the codelab's agent falls back to it), so this is wiring rather than research — but it is unproven, and everything else depends on it.
 
-- [ ] A workflow that authenticates via WIF and completes one trivial agent call on Vertex
+- [x] A workflow that authenticates via WIF and completes one trivial agent call on Vertex — **green, run 32270032966**
 - [x] Configure with explicit `vertex=True, project=, location=`. **`location` must be `global`** — `us-central1` returns a 404 for `gemini-3.7-flash`
 - [x] `Conversation.total_usage` is populated on Vertex, and reports `service_tier=STANDARD`
-- [x] Tool names verified against `0.1.12`. **But the model also reports `manage_task` and `schedule`** — undocumented, not in `BuiltinTools`, not removable via `enabled_tools`
-- [ ] Get the *real* registered tool list out of the harness rather than out of the model, and find out what `manage_task` and `schedule` can do
-- [ ] Run the SDK's own `budget_limits.py` and `observability.py` on Vertex, since both are load-bearing here
-- [x] `BudgetConfig` dial scopes — all five are cumulative across the session
+- [x] Tool names verified against `0.1.12`. **The model's report of `manage_task` and `schedule` was wrong** — neither is registered; the model read the names out of IDE system-prompt templates carried in the shared harness binary
+- [x] Registered tool list taken from the harness contract: **14 `HarnessSideTools` slots, 13 `BuiltinTools`, and no tool catalogue returned by the harness at all.** Nothing is injected under the allowlist; an unregistered name is answered with `Unknown tool`
+- [x] `budget_limits.py` and `observability.py` run green on Vertex from tag `v0.1.12`. **All five budget dials fire with their documented `StopReason`**; only `max_input_tokens` halts *before* spending
+- [x] `BudgetConfig` dial scopes — all five are cumulative, but across the **root trajectory**, not the session. Q4 and Q5 show two of the five are evaded: `max_total_tokens` by subagent spend, `max_model_calls` by model-output retries
 - [x] `enabled_tools` is an exclusive allowlist. **Measured: it cuts the per-turn prompt floor from 10,889 to 4,470 tokens**
-- [ ] **Confirm whether subagent tokens roll into `total_usage` and count against `BudgetConfig`.** Subagents default to on
-- [ ] Confirm whether retries — 2 API, 4 model-output by default — count against `max_model_calls` and appear in usage
+- [x] **Subagent tokens roll into `total_usage` but do *not* count against `BudgetConfig`** — the dial binds on the root trajectory, so the ceiling leaks. Separately, **subagents fail outright on Vertex** (`PlatformClient is nil`), and the failed spawn still bills ~10x a direct answer
+- [x] **Retries are billed and visible in usage (7.4x a clean turn), but do *not* consume `max_model_calls`.** `ModelOutputRetryConfig(max_retries=...)` is the only control over retry spend
 - [x] `view_file` takes `AbsolutePath`, `StartLine`, `EndLine`; ranged reads supported
 - [x] A hard failure raises `AntigravityConnectionError` rather than reporting zero
 - [x] No billing-label surface exists. Source 2 is struck; see [`probe-results.md`](probe-results.md)
@@ -34,8 +34,9 @@ If ADC does not work headlessly, the documented fallback is Vertex Express Mode 
 Most of this exists in the prior art and should be adopted rather than rewritten.
 
 - [ ] Collector: PR metadata and changed-file list, **no file bodies, no diff hunks**
-- [ ] Tool surface, layer 1: `CapabilitiesConfig(enabled_tools=[...], enable_subagents=False)` so unused tools are never advertised — cheaper on every turn, and nothing to deny
-- [ ] Tool surface, layer 2: `policy.deny_all()` then the named allows. **Verify `create_file` / `edit_file` are actually refused at runtime** rather than assumed — the SDK default allows them
+- [ ] Tool surface, layer 1: `CapabilitiesConfig(enabled_tools=[...], enable_subagents=False)` so unused tools are never advertised — cheaper on every turn, and nothing to deny. **`enable_subagents=False` is now a hard requirement**, not a preference: it is the only thing making the M3 ceiling truthful, and delegation is broken on Vertex regardless
+- [ ] Tool surface, layer 2: `policy.deny_all()` then the named allows. **Verify `create_file` / `edit_file` are actually refused at runtime** rather than assumed — the SDK default allows them, and the vendor's own reference calls that default "conservative"
+- [ ] **Keep `agent_behavior` at `AUTONOMOUS` and leave `ASK_QUESTION` out of `enabled_tools`.** It is on in the default surface, and the SDK documents interactive tools as needing `AgentBehavior.INTERACTIVE` to work — a reviewer running unattended in CI can otherwise stall waiting for a human who is not there
 - [ ] Set `workspaces` so `policy.workspace_only()` is auto-applied; set `app_data_dir` to an absolute runner temp path so agent scratch stays out of the checkout; set `env` to a minimal dict so the MCP container does not inherit every workflow secret
 - [ ] `view_file` byte cap with a loud truncation marker (the one thing the prior art does not do) — implemented as a same-name custom tool overriding the built-in, since the built-in has no configurable limit
 - [ ] GitHub MCP server — hosted (`api.githubcopilot.com/mcp/`, 44 tools) or pinned container — with an `enabled_tools` allowlist **and** the matching list in `policy.allow(server, [...])`. Real tool names: `pull_request_read`, `pull_request_review_write`, `add_comment_to_pending_review`, `get_file_contents`
@@ -69,9 +70,9 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 Enforcement is the SDK's job. This milestone is the unit conversion and the reporting around it.
 
 - [ ] `max_cost_usd` input, translated into `BudgetConfig` token limits via the rate table
-- [ ] Bind the ceiling on `max_input_tokens` + `max_output_tokens`, with `max_total_tokens` as a backstop — all three are session-cumulative
+- [ ] Bind the ceiling on `max_input_tokens` + `max_output_tokens` — the two dials nothing has been observed to evade. **`max_total_tokens` is not a usable backstop:** it binds on the root trajectory and subagent spend escapes it
 - [ ] **Note there is no per-request guard in the SDK.** The `view_file` byte cap is the only thing stopping one oversized prompt
-- [ ] `max_model_calls` and `max_tool_calls` as further guards, since a stuck loop is cheap per turn and still unbounded
+- [ ] `max_tool_calls` as a further guard, since a stuck loop is cheap per turn and still unbounded. **`max_model_calls` does not cover model-output retries** — tighten `ModelOutputRetryConfig(max_retries=...)` instead, the default of 4 re-prompts at full context is wrong for a cost-bounded reviewer
 - [ ] Surface `StopReason` in the PR comment, in plain words, and verbatim in the artifact
 - [ ] A budget stop is **not** a workflow failure
 - [ ] Document that the ceiling is a near-bound: cached reads still cost a little while consuming no `max_input_tokens`
@@ -118,11 +119,11 @@ Evidence for every closed row is in [`probe-results.md`](probe-results.md), repr
 
 | # | Question | Blocks | Status |
 |---|---|---|---|
-| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit | **Half closed.** ADC authenticated from a non-interactive process on the first attempt. Only the WIF token exchange inside a runner is still unproven |
-| Q2 | Are the `BudgetConfig` dials per-dispatch or cumulative? | M3 | ✅ **Closed — all five are cumulative across the session.** Quoted from the source docstring in [`cost-tracking.md`](cost-tracking.md). A draft claimed otherwise and was wrong |
+| Q1 | Does WIF → ADC → Vertex work headlessly in a GitHub Actions runner? | M0 exit | ✅ **Closed — yes.** Green run 32270032966: keyless, `external_account` credential, 3,797 tokens billed on Vertex |
+| Q2 | Are the `BudgetConfig` dials per-dispatch or cumulative? | M3 | ✅ **Closed — cumulative, but across the *root trajectory*.** Quoted from the source docstring in [`cost-tracking.md`](cost-tracking.md). A draft claimed per-dispatch and was wrong; Q4 later narrowed "session" to "root trajectory" |
 | Q3 | Is `CapabilitiesConfig(enabled_tools=...)` exclusive or additive? | M1 | ✅ **Closed — explicit allowlist, mutually exclusive with `disabled_tools`.** The SDK's own docstring also endorses preferring it over `policy.deny()` |
-| Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | **Open.** One delegation reported 45k root prompt tokens — evidence of roll-up, no control run. Mooted by `enable_subagents=False` |
-| Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | **Open.** Budget stops confirmed working and usage survives them; the retry interaction specifically is untested |
+| Q4 | Do subagent tokens reach `total_usage` and `BudgetConfig`? | M2 accuracy | ✅ **Closed — `total_usage` yes, `BudgetConfig` no.** `trajectory_usages` shows the subagent's own trajectory summing into the root total, but a ceiling above the root trajectory and below root+subagent did not stop the session. **The ceiling leaks.** Also: subagents fail outright on Vertex (`PlatformClient is nil`), billing ~10x for nothing |
+| Q5 | Do retries count against `max_model_calls` and appear in usage? | M3 accuracy | ✅ **Closed — usage yes, `max_model_calls` no.** Forced with an unsatisfiable schema: 4 retries ran inside a 3-call budget without stopping, at 7.4x the tokens of a clean turn |
 | Q6 | What is the built-in `view_file` parameter contract? | M1 | ✅ **Closed.** `AbsolutePath`, `StartLine`, `EndLine` — captured from a real call. Ranged reads supported |
 | Q7 | Does a failed run really report zero tokens? | M2 | ✅ **Closed.** A hard failure raises `AntigravityConnectionError`; it does not silently report 0. Catch it and record `null` |
 | Q8 | Does a budget-stopped session leave a *submittable* pending review? | M1, M3 | ✅ **Closed — yes to both.** A stop leaves a `PENDING` review with 0 visible comments; the runner submits it with one `POST /reviews/{id}/events`. Runner-owned publication is proven necessary and cheap |

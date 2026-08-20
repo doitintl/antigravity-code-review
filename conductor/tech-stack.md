@@ -26,9 +26,9 @@ Every version and behaviour below marked *verified* was measured against the ins
 Two layers, in this order — the SDK's own guidance, not a preference:
 
 - **`CapabilitiesConfig(enabled_tools=[...], enable_subagents=False)`** — an exclusive allowlist; tools not listed are stripped from the model's context entirely. *Verified*: cuts the per-turn prompt floor from 10,889 to 4,470 tokens.
-- **`policy.deny_all()` plus named allows** — priority-based resolution, specific allow (3) outranks global wildcard deny (7). Still required: `manage_task` and `schedule` reach the model regardless of `enabled_tools`, and policy is the only thing covering them.
-- **`BudgetConfig`** — all five dials cumulative across the session; *verified* from source. There is no per-request guard.
-- **`RetryConfig(model_output_retry=...)`** — the default of 4 re-prompts at full context is a real cost.
+- **`policy.deny_all()` plus named allows** — priority-based resolution, specific allow (3) outranks global wildcard deny (7). Kept on a **narrowed** argument: it is no longer needed to cover invisible built-in tools, because M0 showed there are none. It is still needed for **MCP tools**, which the server declares dynamically and which `enabled_tools` cannot constrain in advance.
+- **`BudgetConfig`** — all five dials cumulative across the **root trajectory**, not the session; *verified* from source and by probe. There is no per-request guard, and **two dials are evaded**: `max_total_tokens` by subagent spend, `max_model_calls` by model-output retries. Bind a cost ceiling on `max_input_tokens` + `max_output_tokens`.
+- **`RetryConfig(model_output_retry=...)`** — the default of 4 re-prompts at full context is a real cost, *measured* at 7.4x a clean turn. Since `max_model_calls` does not cover retries, `max_retries` is the only control over that spend.
 
 ## GitHub integration
 

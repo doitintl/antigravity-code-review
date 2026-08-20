@@ -51,16 +51,19 @@ Public repository under `doitintl`, Apache 2.0, consumed as `doitintl/antigravit
 
 ## Constraints established by measurement
 
-Verified against `google-antigravity==0.1.12` on 2026-08-19. Evidence and reproduction in [`../docs/probe-results.md`](../docs/probe-results.md).
+Verified against `google-antigravity==0.1.12` on 2026-08-19 and 2026-08-20. Evidence and reproduction in [`../docs/probe-results.md`](../docs/probe-results.md).
 
 - **`location` must be `global`.** `us-central1` returns a 404 for `gemini-3.7-flash`.
 - **Per-PR billing reconciliation is not buildable.** The SDK exposes no surface for labelling a generation request, so per-PR figures are self-reported and reconciliation is project-level only. One of four original contributions, struck on evidence.
-- **Read-only is narrower than it looks.** `manage_task` and `schedule` reach the model regardless of `enabled_tools`; only `policy.deny_all()` covers them.
+- **Read-only is exactly as wide as `enabled_tools` says.** An earlier entry here claimed `manage_task` and `schedule` reach the model regardless of the allowlist. **That was wrong.** The harness returns no tool catalogue; the registered set is exactly what the client declares, and an unregistered name is answered with `Unknown tool`. `manage_task` is an Antigravity *IDE* tool whose name leaks through system-prompt templates carried in the shared harness binary — the model read the name, it did not have the tool.
+- **The shipped default is write-capable.** `LocalAgentConfig` builds `CapabilitiesConfig()` with `enabled_tools=None`, which expands to every built-in — 12 of 14 harness tool slots, `file_edit`, `write_to_file` and `run_command` among them. Read-only must be asked for.
+- **Two budget dials do not bound what they appear to.** `max_total_tokens` is evaded by subagent spend and `max_model_calls` by model-output retries. A dollar ceiling must bind on `max_input_tokens` + `max_output_tokens`, and `enable_subagents=False` is a requirement rather than a preference.
+- **Subagents do not work on Vertex.** Delegation fails outright in `0.1.12` and the failed spawn still bills roughly ten times a direct answer.
 - **The runner must own publication.** A budget stop leaves an invisible `PENDING` review with no visible comments; one API call recovers it.
 - **Tool surface is the largest measured cost lever.** Trimming to the tools actually needed cut the per-turn prompt floor from 10,889 to 4,470 tokens — a 59% reduction applied to every turn of every review.
 
 ## Open questions
 
-- WIF token exchange inside a GitHub Actions runner is unproven. The SDK half of the path is proven: ADC authenticated headlessly on the first attempt.
+- ~~WIF token exchange inside a GitHub Actions runner is unproven.~~ **Closed.** Green run 32270032966: keyless, `external_account` credential, 3,797 tokens billed on Vertex from a GitHub Actions runner.
 - Vertex-side rates unconfirmed against the primary source; the published Gemini API rates corroborate across secondary sources.
-- What `manage_task` and `schedule` can actually do.
+- ~~What `manage_task` and `schedule` can actually do.~~ **Closed — nothing here.** Neither is registered, neither is reachable, neither writes.

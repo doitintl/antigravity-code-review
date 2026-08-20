@@ -163,7 +163,7 @@ Caveat worth stating plainly: labels are only as good as their coverage. If any 
 
 **The SDK already enforces budgets.** `BudgetConfig` caps a session declaratively:
 
-All five dials are **cumulative across the session**. Verified against `types.BudgetConfig` in the installed `0.1.12` wheel, not inferred:
+All five dials are cumulative — but across the **root trajectory**, not the whole session. Verified against `types.BudgetConfig` in the installed `0.1.12` wheel, not inferred:
 
 | field | caps | source docstring |
 |---|---|---|
@@ -173,7 +173,22 @@ All five dials are **cumulative across the session**. Verified against `types.Bu
 | `max_output_tokens` | output | "across the session (candidates **+ thoughts**)" |
 | `max_total_tokens` | net input + output | "across the session … **across all turns**" |
 
-When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, `QUOTA_EXHAUSTED`, and so on.
+When one trips, the session stops and the response carries a typed `StopReason` — `MAX_TOTAL_TOKENS_EXCEEDED`, `MAX_MODEL_CALLS_EXCEEDED`, `QUOTA_EXHAUSTED`, and so on. **All five were confirmed firing on Vertex** by running the SDK's own `budget_limits.py` (FR6), and only `max_input_tokens` halts *before* the spend rather than after it.
+
+### 🔴 Two of the five dials are evaded
+
+M0 measured what the docstrings do not say. Two dials are escaped by work the SDK performs on the caller's behalf:
+
+| dial | evaded by | evidence |
+|---|---|---|
+| `max_total_tokens` | **subagent trajectories** | a ceiling of 27,580, above the root trajectory's 25,455 and below the 38,395 session total, did not stop the run (Q4) |
+| `max_model_calls` | **model-output retries** | 4 retries ran inside a 3-call budget without stopping (Q5) |
+
+Both are the same failure: a dial that reads like a bound and is not one. The consequences are specific:
+
+- **Never express the dollar ceiling on `max_total_tokens` alone.** Bind it on `max_input_tokens` + `max_output_tokens`, which nothing has been observed to evade.
+- **`enable_subagents=False` is load-bearing for the budget**, not merely for the prompt floor. With subagents on, the ceiling is not a ceiling.
+- **`ModelOutputRetryConfig(max_retries=...)` is the only control over retry spend.** The call budget does not cover it.
 
 ⚠️ **A draft of this document briefly claimed `max_input_tokens` was per-dispatch and rebuilt the ceiling around that. It was wrong.** The SDK guide's phrase *"evaluated proactively before dispatch"* describes **when the check runs**, not what the counter measures — the counter is a session total, and the check simply happens before sending rather than after. Reading a scope claim into a timing claim inverted the design for one revision. The source docstring is unambiguous and is quoted above so nobody has to take either reading on trust.
 
@@ -198,7 +213,7 @@ def budget_for(max_cost_usd: float, model: str, output_ratio: float = 0.05) -> B
     return types.BudgetConfig(
         max_input_tokens=int(in_tokens),               # net uncached, session
         max_output_tokens=int(out_tokens),             # candidates + thoughts
-        max_total_tokens=int(out_tokens + in_tokens),  # backstop on the mix
+        max_total_tokens=int(out_tokens + in_tokens),  # NOT a backstop — see Q4
         max_model_calls=MAX_CALLS,                     # a stuck loop is cheap per turn
         max_tool_calls=MAX_TOOL_CALLS,
     )
@@ -227,7 +242,11 @@ retry_config=types.RetryConfig(
 )
 ```
 
-Whether those retries count against `BudgetConfig`'s dials is unverified and belongs in M0. **Never use `RetryConfig.benchmark()` here** — it is an unbounded-API-retry preset intended for load tests, and unbounded is the opposite of what a cost-capped CI job wants. Retry counts belong in `review-cost.json` for the same reason token counts do.
+**Now verified (Q5, `0.1.12`, Vertex):** those retries **are** billed and **are** visible in `total_usage` — a retried turn cost 7.4x a clean one — but they do **not** consume `max_model_calls`. So the cost figures this document produces are correct, and the call budget will not stop a retry storm. Setting `max_retries` low is the only guard, which makes the `max_retries=1` above a requirement rather than a suggestion.
+
+Retry counts are also **not deterministic** — the same forced violation cost 9,856 tokens under one budget and 17,631 under another. Report retry counts per review rather than modelling them as a fixed multiplier.
+
+**Never use `RetryConfig.benchmark()` here** — it is an unbounded-API-retry preset intended for load tests, and unbounded is the opposite of what a cost-capped CI job wants. Retry counts belong in `review-cost.json` for the same reason token counts do.
 
 ### Reporting the stop
 

@@ -1,5 +1,5 @@
 """Offline introspection probe: answers what can be answered without a billed call."""
-import inspect, json, sys
+import inspect
 
 import google.antigravity as agy
 from google.antigravity import types
@@ -67,4 +67,5 @@ print("  " + ("\n  ".join(hits) if hits else "NONE FOUND"))
 
 # LocalAgentConfig full field list
 from google.antigravity import LocalAgentConfig
+
 dump_model("LocalAgentConfig", LocalAgentConfig)

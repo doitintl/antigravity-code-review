@@ -3,7 +3,13 @@
 Each test is isolated: a failure prints and moves on. Every agent gets a tight
 BudgetConfig so a misbehaving test cannot run away with the bill.
 """
-import asyncio, json, os, sys, tempfile, traceback, pathlib
+import asyncio
+import json
+import os
+import pathlib
+import sys
+import tempfile
+import traceback
 
 from google.antigravity import Agent, LocalAgentConfig, types
 
@@ -28,7 +34,7 @@ def base(**kw):
 def usage_of(agent):
     try:
         return agent.conversation.total_usage
-    except Exception:
+    except Exception:  # noqa: BLE001 - probing: the failure mode is the result
         return None
 
 
@@ -139,7 +145,7 @@ async def t4_budget_stop():
         r = await a.chat("List every directory here, then read three files, then summarise.")
         try:
             txt = (await r.text()).strip()[:200]
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - probing: the failure mode is the result  # noqa: BLE001 - probing: the failure mode is the result
             txt = f"<text() raised {type(e).__name__}: {e}>"
         RESULTS["T4_budget_stop"] = {
             "stop_reason": str(getattr(r, "stop_reason", None)),
@@ -164,7 +170,7 @@ async def t5_failed_run():
             out["text"] = (await r.text())[:100]
             u = usage_of(a)
             out["usage"] = note(u, "T5")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 - probing: the failure mode is the result
         out["exception"] = f"{type(e).__name__}: {str(e)[:300]}"
     RESULTS["T5_failed_run"] = out
 
@@ -221,7 +227,7 @@ async def main():
         print(f"\n>>> {t.__name__} ...", flush=True)
         try:
             await asyncio.wait_for(t(), timeout=180)
-        except Exception:
+        except Exception:  # noqa: BLE001 - probing: the failure mode is the result  # noqa: BLE001 - probing: the failure mode is the result
             RESULTS[t.__name__ + "_ERROR"] = traceback.format_exc()[-900:]
             print("   FAILED", flush=True)
     print("\n" + "=" * 70)
