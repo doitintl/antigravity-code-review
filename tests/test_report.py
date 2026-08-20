@@ -138,10 +138,24 @@ class TestReviewBody:
         b = review_body(session(), tool_calls=1, model=FLASH, findings=2)
         assert "incomplete" not in b.lower()
 
-    def test_the_estimate_caveat_is_present_but_subordinate(self):
+    def test_the_body_carries_no_caveat_footnote(self):
+        """The table says "Estimated cost"; a paragraph restating it is noise.
+
+        The full caveats live in review-cost.json, where an auditor looks.
+        """
         b = review_body(session(), tool_calls=1, model=FLASH, findings=1)
-        assert "estimate" in b.lower()
-        assert "<sub>" in b
+        assert "<sub>" not in b
+        assert "cache storage" not in b.lower()
+        assert "billing export" not in b.lower()
+
+    def test_the_figure_is_still_marked_as_an_estimate(self):
+        assert "Estimated cost" in review_body(session(), tool_calls=1, model=FLASH, findings=1)
+
+    def test_the_caveats_survive_in_the_artifact(self):
+        """Dropped from the body, not from the record."""
+        a = cost_artifact(session(), repo="o/r", pr=1, model=FLASH, tool_calls=0)
+        assert any("estimate" in c.lower() for c in a["caveats"])
+        assert any("cache storage" in c.lower() for c in a["caveats"])
 
     def test_unknown_cost_does_not_render_a_dollar_sign(self):
         b = review_body(session(model="nope"), tool_calls=1, model="nope", findings=1)

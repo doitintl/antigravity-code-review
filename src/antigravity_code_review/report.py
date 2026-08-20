@@ -101,13 +101,13 @@ def review_body(
             "",
         ]
 
-    note = (
-        f"<sub>Cost is an estimate at published {session.rate_applied or 'list'} rates "
-        f"(source verified {VERIFIED_ON}); cache storage is billed separately and is not "
-        f"included. Verify against your billing export before quoting it.</sub>"
-    )
-    parts.append(note)
-    return "\n".join(parts)
+    # No caveat footnote. The table row already reads "Estimated cost", which
+    # carries the claim without a paragraph restating it, and the full caveats —
+    # rate provenance, cache storage, estimate-until-reconciled — live in
+    # review-cost.json, where anyone auditing a figure would actually look.
+    # A review body is read by the author of the pull request, and every line
+    # that is not about their code competes with the lines that are.
+    return "\n".join(parts).rstrip() + "\n"
 
 
 def cost_artifact(
