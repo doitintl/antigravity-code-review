@@ -122,8 +122,17 @@ class TestReviewBody:
 
     def test_costs_are_a_table_not_a_log_line(self):
         b = review_body(session(), tool_calls=1, model=FLASH, findings=1)
-        assert "|---|---|" in b
+        assert "<table>" in b
         assert "·" not in b
+
+    def test_no_empty_header_band(self):
+        """GFM tables require a header row; these rows have no column names.
+
+        A markdown table therefore renders a blank band above the data.
+        """
+        b = review_body(session(), tool_calls=1, model=FLASH, findings=1)
+        assert "| | |" not in b
+        assert "|---|---|" not in b
 
     def test_names_the_model_that_produced_it(self):
         assert FLASH in review_body(session(), tool_calls=1, model=FLASH, findings=1)

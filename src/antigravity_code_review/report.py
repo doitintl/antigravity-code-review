@@ -76,17 +76,27 @@ def review_body(
         headline = f"### Code review — {findings} {noun}"
 
     output = session.tokens_candidates + session.tokens_thoughts
-    cost = "not available" if session.cost_usd is None else f"**${session.cost_usd:.4f}**"
+    cost = (
+        "not available" if session.cost_usd is None else f"<strong>${session.cost_usd:.4f}</strong>"
+    )
 
     rows = [
-        ("Model", f"`{model}`"),
+        ("Model", f"<code>{model}</code>"),
         ("Input tokens", f"{session.tokens_prompt:,} ({session.cache_rate:.0%} cached)"),
         ("Output tokens", f"{output:,}"),
         ("Tool calls", f"{tool_calls:,}"),
         ("Estimated cost", cost),
     ]
+    # An HTML table rather than a markdown one. GitHub-flavoured markdown
+    # *requires* a header row, and these rows have no meaningful column names —
+    # so a markdown table renders an empty header band above the data. HTML
+    # renders fine in pull request comments and needs no <thead>.
     table = "\n".join(
-        ["| | |", "|---|---|", *[f"| {label} | {value} |" for label, value in rows]]
+        [
+            "<table>",
+            *[f"<tr><td>{label}</td><td>{value}</td></tr>" for label, value in rows],
+            "</table>",
+        ]
     )
 
     parts = [headline, "", table, ""]
