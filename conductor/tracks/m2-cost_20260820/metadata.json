@@ -2,7 +2,7 @@
   "track_id": "m2-cost_20260820",
   "title": "M2: Cost tracking",
   "type": "feature",
-  "status": "complete_except_reconciliation",
+  "status": "complete_pending_reconciliation",
   "milestone": "M2",
   "closes_questions": [
     "Q10"

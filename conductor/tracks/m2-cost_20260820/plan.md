@@ -45,7 +45,7 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 4 — Reconcile and close
 
-- [ ] **Task: Reconcile one real review against billing** *(integration)* — 🔴 **BLOCKED: no BigQuery billing export exists on `sascha-playground-doit`**
+- [~] **Task: Reconcile one real review against billing** *(integration)* — ⏸️ **DEFERRED by decision.** No BigQuery billing export exists on `sascha-playground-doit`, and enabling one is Cloud Console only. Everything else in M2 is done; this is picked up when an export exists
   - [x] Run a review, note `cost_usd` — `$0.044709`, run 32354944747
   - [ ] Compare and record both figures with the date — **cannot: nothing to compare against**
   - [x] **If billing data is unavailable, record the criterion as unmet rather than waving it through** — done; recorded unmet in `probe-results.md` and the roadmap
