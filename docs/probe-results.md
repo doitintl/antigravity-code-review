@@ -1136,6 +1136,75 @@ surfaced asymmetry is decided rather than annotated.
 **And the standing caveat: this is one pull request with four findings.** 2/4 on
 n=1 is a reason to build M5's fixture set, not a claim that the reviewer works.
 
+## Contract passes + judging: surfacing solved, reporting is the bottleneck
+
+Second measured run, after documenting `SearchPath` and adding a judging step.
+
+| | run 1 | run 2 |
+|---|---|---|
+| passes completed | 2 of 3 (one crashed) | **3 of 3** |
+| findings **surfaced** | 2/4 | **4/4** |
+| findings **reported as defects** | n/a | **1/4**, plus one novel |
+| cost | $0.26 | $0.34 |
+
+**Documenting `SearchPath` fixed the crash**, pass 2 ran, and with it every one of
+the four known findings was surfaced. The passes now describe all of them.
+
+**The judge then reported two defects**, one of which is finding #1, stated
+correctly and in its own words:
+
+> An editor can set a gated content tag on standard or documentation pages, but
+> it will never match or render an in-article CTA because CTA resolution only
+> queries landing pages.
+
+Its second defect is **novel** — a missing `BU_SALES_SLACK_CHANNEL_ENV` mapping
+for the Attribute business unit, which neither `claude[bot]` nor any earlier run
+reported.
+
+Findings #2, #3 and #4 were surfaced by the passes and dropped by the judge.
+
+### 🔴 The scorer produced a false negative. Third measurement error
+
+The run reported **0/4 reported**. The correct figure is **1/4 plus one novel**.
+
+The scorer greps for `"page type"`; the judge wrote `"pages"`. It was validated
+against `claude[bot]`'s phrasing and then applied to a different writer, so
+paraphrase defeated it.
+
+That is the third time an instrument, not the reviewer, produced the headline
+number in this investigation:
+
+1. comparing against the wrong commit, two fix commits after the reviewed code;
+2. a budget stop returning empty text, read as "no findings";
+3. keyword scoring failing on paraphrase.
+
+**Every one made the reviewer look worse than it was.** A keyword scorer cannot
+measure recall over free text, and the fixture work in M5 needs a scorer that
+compares meaning — or findings emitted in a structured form that can be matched
+on file and line rather than wording.
+
+### Where the bottleneck moved
+
+It has moved twice, and both moves were real progress:
+
+1. **Not performing the comparison** — fixed by naming the contract question.
+   Surfacing went 0/4 → 2/4 → 4/4.
+2. **Performing it and not reporting it** — the current bottleneck. The judge
+   sees four described asymmetries and calls one a defect.
+
+The judge is one prompt with no tools; it cannot check the codebase to decide
+whether an asymmetry is guarded. Giving it the same tools the passes have is the
+obvious next thing to try, and is untested.
+
+### What can be claimed
+
+The reviewer now **finds** all four known findings, in the sense of describing
+each correctly. It **reports** one of them plus one nobody else found. The
+remaining gap is a judgement problem, not a perception problem, which is a
+better problem to have and a narrower one to fix.
+
+**Still one pull request with four findings.** Every number above is n=1.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
