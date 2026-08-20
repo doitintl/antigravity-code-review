@@ -84,6 +84,33 @@ class TestLineRanges:
         assert f.line is None
 
 
+class TestTheThingsAModelGetsWrong:
+    def test_a_boolean_line_is_not_read_as_one_or_zero(self):
+        """`True` is an int in Python. Line 1 would be a plausible-looking lie."""
+        f = parse_findings('{"file":"a.ts","line":true,"claim":"x"}')[0]
+        assert f.line is None
+
+    def test_a_half_open_range_keeps_the_end_it_was_given(self):
+        f = parse_findings('{"file":"a.ts","end_line":20,"claim":"x"}')[0]
+        assert f.line == 20 and f.end_line == 20
+
+    def test_a_malformed_array_does_not_lose_the_run(self):
+        """A truncated list falls through to the per-line parse rather than raising."""
+        assert parse_findings('[{"file":"a.ts","line":1,"claim":"x"},') == []
+
+    def test_a_bare_json_scalar_on_a_line_is_skipped(self):
+        text = '{"file":"a.ts","line":1,"claim":"x"}\n{}\n"just a string"'
+        out = parse_findings(text)
+        assert len(out) == 1
+
+    def test_a_non_numeric_start_line_yields_no_location_rather_than_line_one(self):
+        f = parse_findings('{"file":"a.ts","start_line":"top of file","claim":"x"}')[0]
+        assert f.line is None and f.end_line is None
+
+    def test_an_array_of_scalars_yields_nothing_rather_than_raising(self):
+        assert parse_findings('["a", "b"]') == []
+
+
 class TestPathsAreCompared_NotTranscribed:
     @pytest.mark.parametrize("written", ["src/a.ts", "./src/a.ts", "/src/a.ts", "a/src/a.ts"])
     def test_diff_and_shell_prefixes_are_normalised_away(self, written):

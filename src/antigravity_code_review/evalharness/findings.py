@@ -178,8 +178,7 @@ def parse_findings(text: str) -> list[Finding]:
             obj = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(obj, dict):
-            continue
+        # No isinstance check: a JSON document beginning with `{` is an object.
         finding = _build(obj)
         if finding is not None:
             findings.append(finding)
