@@ -39,6 +39,20 @@ def list_server_tools(image: str, token: str, timeout: int = 60) -> list[str]:
     if shutil.which("docker") is None:
         raise McpUnavailable("docker is not on PATH")
 
+    # Pull explicitly rather than letting `docker run` do it implicitly. An
+    # implicit pull writes its failure to the same stream as the MCP handshake,
+    # so a registry problem arrives disguised as "the server advertised no
+    # tools" — which sent one investigation down the wrong path entirely.
+    pull = subprocess.run(
+        ["docker", "pull", "--quiet", image],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+    if pull.returncode != 0:
+        raise McpUnavailable(f"could not pull {image}: {pull.stderr.strip()[:300]}")
+
     payload = (
         _frame(
             {
