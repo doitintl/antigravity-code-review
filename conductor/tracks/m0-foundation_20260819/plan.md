@@ -45,10 +45,10 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] Extract the registered tool list from the harness, not from the model
   - [x] Determine what `manage_task` and `schedule` do, and whether either writes
   - [x] If either writes, raise it as a security finding against the posture in `docs/design.md` — neither writes; neither is registered. No finding raised
-- [ ] **Task: SDK example parity (FR6)** *(integration)*
-  - [ ] Fetch `budget_limits.py` and `observability.py` from `google-antigravity/antigravity-sdk-python`, **from the tag matching the pinned `0.1.12`**, not from `main` — they do not ship in the wheel
-  - [ ] Run both against Vertex (`location="global"`); note any divergence from the API-key path they were written for
-  - [ ] Correct `docs/prior-art.md`: the examples are not shipped in the distributed artefact, and there are 34 in source rather than 25
+- [x] **Task: SDK example parity (FR6)** *(integration)* `308a349`
+  - [x] Fetch `budget_limits.py` and `observability.py` from `google-antigravity/antigravity-sdk-python`, **from the tag matching the pinned `0.1.12`**, not from `main` — they do not ship in the wheel
+  - [x] Run both against Vertex (`location="global"`); note any divergence from the API-key path they were written for — both PASS; neither sets `vertex=True`, and `observability.py` carries no `BudgetConfig`
+  - [x] Correct `docs/prior-art.md`: the examples are not shipped in the distributed artefact — and the count is **32**, not 34 or 25; the 34 counted two READMEs
 - [ ] **Task: Q4 — subagent roll-up (FR7)** *(integration)*
   - [ ] Controlled pair: identical task with and without delegation; compare root `total_usage`
   - [ ] Determine whether subagent tokens count against `BudgetConfig`
