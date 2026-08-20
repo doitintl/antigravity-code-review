@@ -48,6 +48,7 @@ from antigravity_code_review.config import (
     REVIEW_TOOLS,
 )
 from antigravity_code_review.cost import price_session
+from antigravity_code_review.evalharness.findings import parse_findings as parse_finding_records
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
@@ -117,30 +118,15 @@ async def _run(cfg, prompt: str, collector: UsageCollector) -> tuple[str, Any]:
 
 
 def parse_findings(text: str) -> list[dict[str, Any]]:
-    """Parse the judge's JSON-per-line output, tolerantly.
+    """Parse the judge's output into the comment shape the runner posts.
 
-    Tolerantly because a model asked for bare JSON will sometimes wrap it in a
-    markdown fence anyway, and losing every finding to a stray ``` would be an
-    expensive way to be strict.
+    One definition, shared with the eval harness. The reviewer's findings and
+    the scorer's inputs have to be the same records or the harness is measuring
+    a translation of the review rather than the review — and a scorer fed a
+    slightly different shape than the reviewer emits is precisely how an
+    instrument comes to produce the headline number.
     """
-    findings = []
-    for raw in text.splitlines():
-        line = raw.strip().removeprefix("```json").removeprefix("```").strip()
-        if not line.startswith("{"):
-            continue
-        try:
-            obj = json.loads(line)
-        except ValueError:
-            continue
-        if obj.get("file") and obj.get("claim"):
-            findings.append(
-                {
-                    "file": str(obj["file"]),
-                    "line": int(obj["line"]) if str(obj.get("line", "")).isdigit() else None,
-                    "claim": str(obj["claim"]),
-                }
-            )
-    return findings
+    return [f.as_comment() for f in parse_finding_records(text)]
 
 
 async def review(repo: str, number: int, project: str) -> int:
