@@ -13,3 +13,9 @@ The central register of all tracks. Each entry links to that track's handshake.
 - [x] **Track: M1 — A reviewer that posts (pull-context reviewer, GitHub MCP, runner-owned submit)**
 
   *Link: [conductor/tracks/m1-reviewer_20260820/index.md](./tracks/m1-reviewer_20260820/index.md)*
+
+---
+
+- [~] **Track: M2 — Cost tracking (rate table, per-turn accounting, cost on every review)**
+
+  *Link: [conductor/tracks/m2-cost_20260820/index.md](./tracks/m2-cost_20260820/index.md)*
