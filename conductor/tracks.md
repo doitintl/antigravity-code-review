@@ -10,6 +10,6 @@ The central register of all tracks. Each entry links to that track's handshake.
 
 ---
 
-- [ ] **Track: M1 — A reviewer that posts (pull-context reviewer, GitHub MCP, runner-owned submit)**
+- [~] **Track: M1 — A reviewer that posts (pull-context reviewer, GitHub MCP, runner-owned submit)**
 
   *Link: [conductor/tracks/m1-reviewer_20260820/index.md](./tracks/m1-reviewer_20260820/index.md)*
