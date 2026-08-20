@@ -29,6 +29,10 @@ source = ["src/antigravity_code_review"]
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+# Vendored verbatim from the SDK at tag v0.1.12 and pinned by git blob SHA in
+# probe/probe_example_parity.py. Formatting them would break that check and the
+# provenance it exists to prove, so they are not ours to lint.
+extend-exclude = ["probe/sdk_examples"]
 
 [tool.mypy]
 python_version = "3.10"

@@ -193,6 +193,58 @@ Both the workflow and the probe now inspect the file rather than the variable na
 
 3,768 input tokens for `"Say OK."` with `enabled_tools=[FINISH]`, against 4,470 measured locally with `[VIEW_FILE, FINISH]` and 10,889 with the default set. Consistent with the tool surface being the dominant term in the floor.
 
+## ✅ FR6 — the SDK's own examples, run against Vertex
+
+`budget_limits.py` and `observability.py` are load-bearing for M3 and M2, so they were run rather than read. They do not ship in the wheel; both were fetched from tag `v0.1.12` and vendored under `probe/sdk_examples/`, pinned by git blob SHA:
+
+| example | blob SHA at `v0.1.12` |
+|---|---|
+| `budget_limits.py` | `f1a72f7c7ed01ab19ec8c32e81cd1fa14f292ed0` |
+| `observability.py` | `f693785172654a6ff48f47f89f78dc40c8ad2238` |
+
+`probe/probe_example_parity.py` verifies those hashes before running, so a drifted copy fails loudly instead of quietly testing a different SDK.
+
+### Both pass on Vertex — after two divergences are papered over
+
+Every example in the tree constructs a bare `LocalAgentConfig(...)`: **no `vertex`, no `project`, no `location`.** Run verbatim they authenticate against the Gemini API with a key. The runner patches `LocalAgentConfig` to inject the Vertex fields rather than editing the files, so the vendored bytes still hash to upstream.
+
+| example | result on Vertex | divergence from the path it was written for |
+|---|---|---|
+| `budget_limits.py` | **PASS** | no `vertex=True` |
+| `observability.py` | **PASS** | no `vertex=True`; **no `BudgetConfig` — unbounded as written** |
+
+That second one matters: this project requires every probe call to carry a budget, and the SDK's own observability example carries none. Anything adopted from it needs a ceiling added.
+
+### All five budget dials fire correctly on Vertex
+
+This is the result M3 rests on. Each dial produced its documented `StopReason`, and the stop persisted into the following turn:
+
+| dial | setting | `StopReason` observed |
+|---|---|---|
+| `max_model_calls` | 1 | `MAX_MODEL_CALLS_EXCEEDED` |
+| `max_tool_calls` | 1 | halted after the first tool execution |
+| `max_input_tokens` | 50 | halted **before inference** |
+| `max_output_tokens` | 30 | `MAX_OUTPUT_TOKENS_EXCEEDED` |
+| `max_total_tokens` | 100 | `MAX_TOTAL_TOKENS_EXCEEDED` |
+
+**`max_input_tokens` halts proactively, before the call is made.** The other dials stop the session once the budget is already spent. That asymmetry is worth stating plainly in M3's ceiling documentation: only one of the five prevents spend rather than reacting to it.
+
+### A cost datum, incidentally
+
+`observability.py` asks one question — "What is the weather in Seattle?" — with the **default** tool surface and one custom tool. It billed:
+
+```
+Prompt tokens: 21,853 · Output: 43 · Thinking: 55 · Total: 21,951
+```
+
+A tool-using turn is two model calls, so that is ~10.9k input tokens *per call* — matching the 10,889 default-surface floor measured earlier, and confirming it is charged per model call rather than per turn. The same question with `enabled_tools=[FINISH]` and one custom tool cost 7,918 total across its two calls.
+
+**A single tool call doubles the floor.** Any per-review estimate must multiply the floor by model calls, not by turns.
+
+### One thing that is *not* a divergence
+
+The example's streamed output first appeared empty, because its `@post_tool_call` audit hook prints a leading newline mid-stream and pushes the agent's text below the audit line. Streaming on Vertex is fine — a control run yielded the full text in one chunk, `stop_reason=UNSPECIFIED`. All four of the example's own stated success criteria are met.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

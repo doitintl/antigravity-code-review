@@ -39,7 +39,24 @@ Where this project differs:
 
 ## The SDK's own `examples/` tree
 
-Read this before writing anything. A search of public GitHub finds essentially no third-party SDK usage beyond the two reviewers above, but the source repository carries **34 runnable examples** — 24 under `examples/getting_started/` and 10 under `examples/deep_dives/` — covering more than either reviewer uses.
+Read this before writing anything. A search of public GitHub finds essentially no third-party SDK usage beyond the two reviewers above, but the source repository carries **32 runnable examples** — 23 under `examples/getting_started/` and 9 under `examples/deep_dives/` — covering more than either reviewer uses.
+
+Counted from the git tree at tag `v0.1.12`, `.py` files only:
+
+| path | runnable examples |
+|---|---|
+| `examples/getting_started/` | 23 |
+| `examples/deep_dives/` | 9 |
+| `examples/resources/mcp_server.py` | 1 helper, not an example |
+| **total `.py`** | **33** |
+| all files including 3 READMEs and 3 media assets | 39 |
+
+This figure has now been wrong twice. The original **25** was low; the **34** that replaced it counted each directory's `README.md` as an example (24 + 10). Reproduce the count rather than quoting it:
+
+```bash
+gh api "repos/google-antigravity/antigravity-sdk-python/git/trees/v0.1.12?recursive=1" \
+  --jq '.tree[] | select(.path|startswith("examples/")) | select(.path|endswith(".py")) | .path'
+```
 
 ⚠️ **They are not shipped in the wheel.** Verified against `0.1.12`: the installed package has no `examples/` directory. Fetch them from `google-antigravity/antigravity-sdk-python` at the tag matching the pinned version — an example from `main` would silently exercise a different SDK than the one pinned here.
 
