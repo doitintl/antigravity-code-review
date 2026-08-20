@@ -10,10 +10,14 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
   - [x] A fixture names repo, base SHA, head SHA, and a list of defects
   - [x] Each defect: file, line, class (local / cross-file / convention / security), description
   - [x] Reject a fixture that names a PR without SHAs — a head that moves is a different review
-- [ ] **Task: Curate three fixtures** *(chore)*
-  - [ ] Start from pull requests `claude[bot]` reviewed, where findings are recorded and independent
-  - [ ] `doitbse/draft#538` at `5349acd3` is the first, with its four findings
-  - [ ] At least two repositories
+- [x] **Task: Curate three fixtures** *(chore)* — `1e976d4`
+  - [x] Start from pull requests `claude[bot]` reviewed, where findings are recorded and independent
+  - [x] `doitbse/draft#538` at `5349acd3` is the first, with its four findings
+  - [x] At least two repositories — four fixtures, two repositories, twenty defects, all four classes
+  - **Fixture data is gitignored.** This repository is public and the reviewed pull requests are
+    private; only the curation tooling and the format are committed. Stated in `evals/README.md`.
+  - Only one repository has independently-reviewed pull requests (30+ scanned), so the second
+    repository is the planted M1 fixture — and it is the set's only local/security coverage.
 - [ ] **Task: Reachability check** *(logic + integration)*
   - [ ] *Logic:* a defect must carry evidence of reachability
   - [ ] *Integration:* verify each recorded defect can actually manifest, as M1's `return True` could not
