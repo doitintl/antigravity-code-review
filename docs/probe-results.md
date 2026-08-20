@@ -818,6 +818,76 @@ being the whole file, so a head read was representative and the cap looked
 sufficient. A real generated file gets a small edit in the middle, which is the
 case that breaks it. **The fixture tested the cap, not the thing the cap was for.**
 
+## M2.5 — the cost problem is fixed; recall is not demonstrated
+
+Three changes after the `draft#538` failure: a `view_diff` tool serving the
+patches the collector already fetched, diff size carried in the seed,
+`compaction_threshold` set, and system instructions rebuilt around the precision
+structure in Anthropic's `code-review` plugin.
+
+### The cost and completion problem is solved
+
+Same pull request, same repository, before and after:
+
+| | before | after |
+|---|---|---|
+| input tokens | 7,575,648 | **2,111,714** |
+| tool calls | 87 | 88 |
+| stop reason | `MAX_INPUT_TOKENS_EXCEEDED` | **completed normally** |
+| cost | $1.46 | **$0.39** |
+
+It no longer runs out of context on a 30-file pull request. The first diff-only
+run was cheaper still — 269,566 tokens at $0.11 — before cross-file reading was
+encouraged, which is the honest cost of following references.
+
+### Recall is not
+
+At the commit `claude[bot]` reviewed, on the same 21 changed files, ours reported
+**no findings**. `claude[bot]` reported four, all of them real enough that the
+next commit on the branch is titled *"fix(website): address PR #538 review
+findings"*.
+
+**A methodology error nearly buried this.** The first comparison ran against the
+pull request *head*, which is two fix commits later than the code
+`claude[bot]` saw — so "we found nothing they found" was measuring different
+source. Re-running at `5349acd3` gave the same result, so the gap is real, but
+the first version of this comparison was not evidence of it.
+
+### What does not explain it
+
+- **Not the context ceiling.** The run completes with room to spare.
+- **Not missing repository conventions.** The repo has a 9.5 KB `CLAUDE.md`, and
+  `claude[bot]`'s prompt does launch dedicated compliance agents against it — but
+  the convention behind its sharpest finding, that a new field must be routed
+  through `stagedFields` rather than `directFields`, **is not in `CLAUDE.md`**. It
+  derived that from reading the PUT handler.
+- **Not a refusal to look.** 88 tool calls, and the model reports having followed
+  references across HubSpot APIs, schema validation and the blog renderer.
+
+### What might
+
+- **Over-suppression.** The instructions now carry an explicit do-not-flag list
+  and "if you are not certain an issue is real, do not flag it". M1 already
+  measured this reviewer dropping a marginal finding whenever its list ran short.
+  A precision bar tuned for a different model may simply be silencing it.
+- **No verification pass.** Anthropic's design *generates* findings with one set
+  of agents and *confirms* them with another. Ours does both in one pass, where a
+  strict bar cannot distinguish "checked and dismissed" from "never formed".
+- **Depth.** `claude[bot]`'s findings require holding a component, a query
+  function and a schema comment together, then reasoning about intent. That is a
+  harder task than pattern-matching a diff, and the models are not the same.
+
+### The next diagnostic, and why
+
+Point the reviewer at one known finding and ask directly. That distinguishes
+**cannot see it** from **saw it and suppressed it**, which have opposite fixes:
+the first needs better reasoning or context, the second needs a looser bar. Until
+that is run, the cause is a hypothesis and is recorded as one.
+
+**What can be claimed today:** the reviewer completes on a real pull request
+inside a sane budget, which it could not do before. **What cannot:** that it
+finds anything worth reading there.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
