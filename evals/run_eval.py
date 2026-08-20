@@ -84,6 +84,13 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--fixture", action="append", help="limit to named fixtures")
     parser.add_argument("--out", help="write the run records here as JSON")
+    parser.add_argument(
+        "--gates-only",
+        action="store_true",
+        help="run the gates and stop, without a model call. The gates are the part "
+        "that decides whether a number is worth producing, so they are worth being "
+        "able to check for free.",
+    )
     args = parser.parse_args()
 
     project = os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -145,6 +152,10 @@ def main() -> int:
     if not ambiguous:
         print("  PASS  every recorded defect is separable by location alone")
     print()
+
+    if args.gates_only:
+        print("--gates-only: stopping before any model call")
+        return 0
 
     configuration = CONFIGURATIONS[args.config]
     records = asyncio.run(
