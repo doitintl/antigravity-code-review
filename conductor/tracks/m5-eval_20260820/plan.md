@@ -6,10 +6,10 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
 
 ## Phase 1 — Fixtures
 
-- [ ] **Task: Fixture format** *(logic)*
-  - [ ] A fixture names repo, base SHA, head SHA, and a list of defects
-  - [ ] Each defect: file, line, class (local / cross-file / convention / security), description
-  - [ ] Reject a fixture that names a PR without SHAs — a head that moves is a different review
+- [x] **Task: Fixture format** *(logic)* — `0c056bf`
+  - [x] A fixture names repo, base SHA, head SHA, and a list of defects
+  - [x] Each defect: file, line, class (local / cross-file / convention / security), description
+  - [x] Reject a fixture that names a PR without SHAs — a head that moves is a different review
 - [ ] **Task: Curate three fixtures** *(chore)*
   - [ ] Start from pull requests `claude[bot]` reviewed, where findings are recorded and independent
   - [ ] `doitbse/draft#538` at `5349acd3` is the first, with its four findings
