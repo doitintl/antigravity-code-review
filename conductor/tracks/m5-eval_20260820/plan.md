@@ -24,9 +24,11 @@ Follows [`../../workflow.md`](../../workflow.md). Tasks are *logic* (full TDD, >
   - [x] A defect must carry evidence of reachability
   - [x] A placeholder is not evidence — reject `TODO`, `yes`, `n/a` and their kin
   - [x] Gate a whole set before a run, so a weak fixture cannot quietly produce a number
-- [~] **Task: Verify each recorded defect can actually manifest** *(integration)*
-  - [ ] Execute the planted fixture's defects, as M1's `return True` could not be
-  - [ ] Say plainly which fixtures rest on executed evidence and which on a recorded trigger path, as M1's `return True` could not
+- [x] **Task: Verify each recorded defect can actually manifest** *(integration)* — `791d2b1`
+  - [x] Execute the planted fixture's defects, as M1's `return True` could not be — all five
+        reproduced; recorded in [`probe-results.md`](../../../docs/probe-results.md)
+  - [x] Say plainly which fixtures rest on executed evidence and which on a recorded trigger path
+        — **5 executed, 15 recorded**, printed as separate lines and stated as a limitation, as M1's `return True` could not
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 2 — Scoring that survives paraphrase
