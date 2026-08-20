@@ -39,7 +39,9 @@ Where this project differs:
 
 ## The SDK's own `examples/` tree
 
-Read this before writing anything. A search of public GitHub finds essentially no third-party SDK usage beyond the two reviewers above, but the SDK ships 25 runnable examples that cover more than either of them uses.
+Read this before writing anything. A search of public GitHub finds essentially no third-party SDK usage beyond the two reviewers above, but the source repository carries **34 runnable examples** — 24 under `examples/getting_started/` and 10 under `examples/deep_dives/` — covering more than either reviewer uses.
+
+⚠️ **They are not shipped in the wheel.** Verified against `0.1.12`: the installed package has no `examples/` directory. Fetch them from `google-antigravity/antigravity-sdk-python` at the tag matching the pinned version — an example from `main` would silently exercise a different SDK than the one pinned here.
 
 Directly relevant:
 
