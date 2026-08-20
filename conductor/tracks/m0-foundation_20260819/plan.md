@@ -53,8 +53,8 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
   - [x] Controlled pair: identical task with and without delegation; compare root `total_usage` — roll-up confirmed via `trajectory_usages`
   - [x] Determine whether subagent tokens count against `BudgetConfig` — **no.** The dial binds on the root trajectory; the ceiling leaks
   - [x] *Unplanned:* subagents fail outright on Vertex in `0.1.12` (`PlatformClient is nil`), and the failed spawn still bills ~10x the control
-- [ ] **Task: Q5 — retry accounting (FR8)** *(integration)*
-  - [ ] Force a `response_schema` violation; measure whether retries consume `max_model_calls` and appear in usage
+- [x] **Task: Q5 — retry accounting (FR8)** *(integration)* `e06f13c`
+  - [x] Force a `response_schema` violation; measure whether retries consume `max_model_calls` and appear in usage — retries **are** billed and visible (7.4x baseline), but do **not** consume `max_model_calls`
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
 
 ## Phase 4 — Record and close
