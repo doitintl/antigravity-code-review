@@ -45,3 +45,7 @@ terraform/environments/fixture/.terraform.lock.hcl
 # private directory.
 evals/fixtures/
 evals/reference/
+# Run records name the fixtures' files and quote findings about them.
+evals/results/
+# Cached fixture checkouts.
+.eval-cache/
