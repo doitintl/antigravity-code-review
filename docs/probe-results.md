@@ -760,6 +760,64 @@ incident, and an argument for fixtures that resemble real work.
 Recorded as a failure rather than filed as a bug, because the reviewer is
 working as designed and the design is what needs to change.
 
+## 🔴 The reviewer reads files. It should be reading diffs
+
+Following the `doitbse/draft#538` failure, one question turned out to matter
+more than the accumulation problem: **why did the agent open a 2.9 MB generated
+file at all?**
+
+| | |
+|---|---|
+| `docs/openapi.json` | 2,947,014 bytes, 74,560 lines |
+| the actual change | **+30 lines, patch 2,799 bytes** — 0.09% of the file |
+| where the change is | **line 13,329** |
+| what the 131,072-byte cap reads | lines 1 – **3,113** |
+
+**The agent read the wrong 128 KB.** It spent roughly 33,000 tokens, never saw
+the changed lines, and the truncation marker correctly told it not to reason
+about the part it could not see. On that file it could not have produced a
+review no matter what it did.
+
+The byte cap is doing its job — it prevents the crash. It cannot make a
+head-of-file read relevant to a change two thirds of the way down.
+
+### Three gaps that compound
+
+1. **The seed carries no size signal.** `docs/openapi.json (added, +30/-0, sha)`
+   is indistinguishable from a forty-line source file. The agent has nothing to
+   triage on, so it opens everything.
+2. **`view_file` reads from the top.** For a change at line 13,329 the head is
+   exactly the wrong slice, and the agent has no way to know where to look.
+3. **The patch exists and is never offered.** GitHub returns it per file, it is
+   2,799 bytes, and it contains precisely the thing under review — **1,053×
+   smaller than the file**.
+
+### The correction
+
+[`design.md`](design.md) is right that diff hunks must not go **in the seed** —
+attaching them for every file is what produced the original 1M-token failure.
+But the conclusion drawn from that was too broad. The fix is not "no hunks
+anywhere"; it is **hunks on demand, through a tool**.
+
+That is the pull-context principle exactly. The current design applies it to file
+bodies and forgets the diff, which leaves the agent reading whole files to find
+changes it was never shown.
+
+**Proposed:** a `view_diff(path)` tool returning the changed hunks for one file,
+byte-capped like `view_file`. For this pull request that is 2,799 bytes instead
+of 131,072 — and unlike the 131,072, it contains the change.
+
+**Also proposed:** carry file size in the seed, so a generated artefact can be
+recognised without opening it. The instruction "do not review generated files"
+is unactionable when the only way to tell is to read the file.
+
+### Why none of this surfaced earlier
+
+The fixture's oversized file was a flat 582 KB JSON array with the "change"
+being the whole file, so a head read was representative and the cap looked
+sufficient. A real generated file gets a small edit in the middle, which is the
+case that breaks it. **The fixture tested the cap, not the thing the cap was for.**
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.

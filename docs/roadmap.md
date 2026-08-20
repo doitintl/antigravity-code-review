@@ -65,6 +65,19 @@ Most of this exists in the prior art and should be adopted rather than rewritten
 
 **Exit:** every review reports its cost ✅ **met** (~$0.0447 measured), and the same figure can be found in the billing export 🔴 **not met — no billing export exists on this project**.
 
+## M2.5 — Read diffs, not files 🔴 **new, from a real pull request**
+
+`doitbse/draft#538` showed the reviewer opening a 2.9 MB generated file to
+review a 30-line change, reading the wrong 128 KB, and learning nothing. See
+[`probe-results.md`](probe-results.md).
+
+- [ ] **`view_diff(path)` tool** returning the changed hunks for one file, byte-capped. For that PR: 2,799 bytes against 131,072 — and unlike the 131,072, it contains the change
+- [ ] **File size in the prompt seed**, so a generated artefact can be recognised without opening it. "Do not review generated files" is unactionable when reading the file is the only way to tell
+- [ ] **Set `compaction_threshold`**, which M1 left unset. Nothing currently bounds context growth across turns, and a 30-file PR reached 7.5M cumulative input tokens
+- [ ] **Re-run `doitbse/draft#538`** as the acceptance test. The 4-file fixture cannot exercise any of this
+
+**Exit:** a real 30-file pull request reviewed to completion, with findings, inside a sane budget.
+
 ## M3 — A dollar ceiling
 
 Enforcement is the SDK's job. This milestone is the unit conversion and the reporting around it.
