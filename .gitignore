@@ -37,3 +37,11 @@ htmlcov/
 .env
 .venv-dev/
 terraform/environments/fixture/.terraform.lock.hcl
+
+# Fixture data names private repositories: paths, line numbers, defect claims,
+# and verbatim reference-review text. This repository is public. The harness
+# code is committed; the code under measurement never is. Populate a working
+# set locally with evals/curate_fixture.py, or point AGY_EVAL_FIXTURES at a
+# private directory.
+evals/fixtures/*.json
+evals/reference/
