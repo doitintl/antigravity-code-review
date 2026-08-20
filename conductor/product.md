@@ -28,7 +28,7 @@ Where the two conflict, internal needs win — but nothing ships that a stranger
 
 All four matter. They are proven at different stages rather than simultaneously.
 
-1. **Finds defects a single-shot reviewer cannot.** At least one fixture defect reachable only via a file outside the diff. *Proven at M5.*
+1. **Finds defects a single-shot reviewer cannot.** At least one fixture defect reachable only via a file outside the diff. 🔴 **Measured at M5, and not met.** Across 24 runs on 4 fixtures, cross-file recall was **0–2 of 25** and convention recall **0 of 11**, stable across two repositories and two configurations. Cross-file defects — precisely the ones a single-shot reviewer cannot reach — are the class this reviewer is worst at. Local and security defects it handles (5/11 and 4–6/6). The criterion stands; the reviewer does not yet meet it, and M5 exists so that this is a measurement rather than an impression.
 2. **Anyone can answer "what did that review cost".** A per-PR figure that reconciles, and a dollar ceiling that holds. *Proven at M2–M3.*
 3. **Teams keep it switched on.** Reviews land before merge, cost stays defensible, nobody disables it. Makes latency a first-class metric beside cost.
 4. **A clear verdict on the SDK for agentic CI.** The reviewer is partly a vehicle for testing whether Google Antigravity is viable in this role. A well-evidenced "no" is a real result.

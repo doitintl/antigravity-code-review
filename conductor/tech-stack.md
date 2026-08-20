@@ -49,7 +49,8 @@ Two layers, in this order — the SDK's own guidance, not a preference:
 | **pytest** | unit tests for the collector, rate table, budget translation and cost arithmetic — the pure-logic parts carrying the project's actual claims |
 | **ruff** | lint and format in one fast tool |
 | **mypy** | static typing; the SDK ships Pydantic models, so annotations carry real information |
-| **Fixture eval harness** | M5. Planted defects, spurious findings, cost, wall-clock, against a single-shot baseline. Not a unit test — the thing that makes quality claims checkable at all |
+| **Fixture eval harness** | Built at M5, in `src/antigravity_code_review/evalharness/`. Fixtures pinned by base and head SHA, defects classed and shown reachable, findings matched on **location** rather than wording, repeated runs, per-defect hit rates, cost beside recall, incomplete runs excluded from recall and still charged. Not a unit test — the thing that makes quality claims checkable at all |
+| **Eval gates** | Four, run before any model call: reachability evidence, scorer validated against a reference review *including a paraphrase control*, how easily a finding could score by accident, and defect pairs location cannot separate. Spending money to produce a number the harness already knows it cannot trust is worse than spending nothing |
 
 ## Deliberately not used
 

@@ -117,13 +117,18 @@ Enforcement is the SDK's job. This milestone is the unit conversion and the repo
 
 Deliberately not last. Without it, every quality claim is an anecdote, and there is no way to tell whether a change helped.
 
-- [ ] Fixture PRs with planted defects of known kinds, including at least one requiring a file **outside** the diff
-- [ ] Score: defects found, spurious findings, cost, wall-clock
-- [ ] A baseline against a single-shot reviewer on the same fixtures
-- [ ] A prompt-injection fixture: a PR whose content instructs the reviewer to approve
-- [ ] A large-generated-file fixture, the case that breaks push-based reviewers
+- [x] Fixture PRs with defects of known kinds, including many requiring files **outside** the diff — 4 fixtures, 2 repositories, 20 defects, all four classes. Three are real pull requests with independently-produced findings; 9 of 20 defects are cross-file
+- [x] Score: defects found, spurious findings, cost — per defect, per class, as ranges across repeated runs. Spurious findings are kept as `novel` rather than discarded, which is what caught the harness's own false 0/4
+- [x] A large-generated-file fixture, the case that breaks push-based reviewers — the 21-file fixture changes a **2,947,014-byte** `openapi.json`, the exact file that broke the previous reviewer. Every run completed
+- [x] ~30 minute wall-clock per full sweep of 12 runs (**~6.6 min per run**), measured across two sweeps
+- [ ] **A baseline against a single-shot reviewer on the same fixtures** — not done. Q12 called this "a decision, not a discovery"; it needs a second reviewer stood up, not more harness
+- [ ] **A prompt-injection fixture** — not done. It measures a different property (safety, not recall) and needs a fixture authored for it
 
-**Exit:** a table showing what is found, what it costs, and how long it takes, against a baseline.
+**Exit — met, with two items above left open and named.** The table exists: [`probe-results.md`](probe-results.md) reports what is found per defect and per class, what it costs per run, and how long a sweep takes, over **24 runs across two configurations** costing **$5.85**.
+
+**What it established:** security 4–6/6 and local 2–5/11 against **cross-file 0–2/25** and **convention 0/11** — the reviewer's blindness to cross-file and convention defects is stable across two repositories and two configurations, not a bad draw. **What it refuted:** that the judge was discarding those findings. Removing it made cross-file recall worse, not better.
+
+**What it corrected in its own instrument, twice:** a defect recorded as a point where the reference reviewer had named a span, which produced a false 0/4; and one fixture flagged `SOFT` because 71% of its lines sit within a defect's tolerance window, so its numbers cannot be read beside the others'.
 
 ## M6 — Release
 

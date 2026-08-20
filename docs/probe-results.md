@@ -1324,6 +1324,264 @@ prompt that reports four instead of two would be fitting to noise.
 answer: given a set of surfaced properties, how many become reported defects, how
 stable is that selection, and does it depend on the prompt or on the model.
 
+## M5 — reachability, verified by execution rather than asserted
+
+`probe/probe_reachability.py`, run 2026-08-20 against the curated set. The
+harness's first job is to stop measuring itself, and the first way it did that
+in M1 was a defect that could not fire.
+
+```
+4 fixture(s), 2 repositor(y/ies), 20 defect(s)
+1. THE GATE  — PASS, all 20 carry non-placeholder evidence
+2. EXECUTION — observed by execution : 5
+               recorded trigger path : 15
+               failed to reproduce   : 0
+```
+
+### Five defects, run rather than read
+
+| defect | class | observed |
+|---|---|---|
+| type mismatch | local | `TypeError: unsupported operand type(s) for -: 'decimal.Decimal' and 'float'` on **every** call |
+| ledger guard bypass | local | 500 moved from a balance of 100, returned `True`, balance **−407.50**; the guarded API raises `insufficient funds` on the same move |
+| SQL injection | security | one call with a crafted argument wrote **two** rows, the second entirely attacker-controlled |
+| swallowed audit failure | local | balances moved, `True` returned, **no error surfaced and no audit row exists** |
+| hardcoded credential | security | live-format key present at the head SHA, 45 characters |
+
+**Three of these are shadowed by the first.** The type mismatch raises before
+the rest of the function runs, so they are exercised against a copy with *only*
+that defect repaired and nothing else changed, and the probe's own output says
+so. That is the honest form of the claim: a reviewer reads the code as written
+and reports the shadowing defect too, so a defect reachable-once-the-other-is-fixed
+is a defect. A defect no input can reach is not, which is why the M1 fixture's
+unconditional `return True` was **dropped from the set** rather than carried into
+it. It was scored 0/8 and the reviewer was right.
+
+### The number that matters more is 15
+
+**Fifteen of twenty defects were not executed.** Their evidence is a trigger
+path recorded by an independent reviewer — better than our own reading, and not
+the same claim as running it. The probe prints `EXECUTED` and `RECORDED` as
+separate lines for exactly that reason, and reports outright that a set with
+nothing executed is the position M1 was in.
+
+Those fifteen live in a TypeScript web application with no harness to drive
+them, so executing them is not a small piece of work. Recorded as a limitation
+of the set rather than smoothed over: **recall measured on those fixtures rests
+on somebody else having read the code carefully, not on the defect having been
+made to fire.**
+
+### The gate is mechanical, and says so
+
+`require_reachable()` rejects placeholder evidence — `TODO`, `yes`, `n/a` — and
+applies a length floor. It cannot tell a careful trigger path from a
+confident-sounding guess and does not try to. A credibility heuristic over prose
+would be the fourth instrument in this document to produce a headline number of
+its own.
+
+## ✅ M5 — the first review-quality numbers this project is entitled to
+
+`google-antigravity==0.1.12`, `gemini-3.7-flash`, global endpoint, 2026-08-20.
+One configuration — the reviewer as it ships — run **3 times against each of 4
+fixtures**. 12 runs, 11 complete, **$3.4765**.
+
+| fixture | classes | recall across 3 runs | cost/run |
+|---|---|---|---|
+| planted, 2 files 🔸 | 3 local, 2 security | **2–5 of 5** | $0.10 |
+| real A, 7 files | 3 cross-file, 1 convention | **0 of 4** | $0.36 |
+| real B, 21 files | 4 cross-file | **0–1 of 4** | $0.42 |
+| real C, 6 files | 4 convention, 2 cross-file, 1 local | **0 of 7** | $0.28 |
+
+**By defect class, across every complete run:**
+
+| class | hits / opportunities |
+|---|---|
+| security | **4 / 6** |
+| local | **5 / 11** |
+| cross-file | **2 / 25** |
+| convention | **0 / 11** |
+
+### What is now established rather than asserted
+
+**The reviewer is near-blind to cross-file and convention defects, and this is
+stable rather than noisy.** 2 of 25 and 0 of 11, across three pull requests and
+two repositories. Every earlier version of this claim was a single sample and
+could have been a bad draw. It is not.
+
+**The variance lives where the reviewer succeeds, not where it fails.** On the
+planted fixture the same code and configuration produced 2, 5 and 2 of 5 — the
+judge emitted 2, 5 and 2 findings. The real fixtures do not wobble; they are
+flat. That is a sharper statement than "the reviewer is non-deterministic".
+
+**Cost is inverted against value.** ~$0.36 to find nothing on a real pull
+request, ~$0.10 to find most things on a planted one.
+
+**One novel defect reproduced.** A missing business-unit-to-Slack-channel
+mapping, reported by neither the reference reviewer nor the fixture, and
+independently surfaced again here. It is kept as `novel` rather than discarded,
+which is why it survived to be noticed twice.
+
+### 🔴 The harness produced a wrong headline number, and this is the fourth time
+
+The first report said **0/4 on every run** of the 21-file fixture. **It was
+wrong.** Two of the three runs had identified a known defect and anchored the
+comment at line **989**; the fixture recorded **1005**, and a three-line
+tolerance called it a miss.
+
+Both numbers are the same defect. The reference reviewer's own text describes
+the block as **`989-1005`** — it hung its GitHub comment at the end of the span,
+ours pointed at the start. **The curation kept the anchor and threw the span
+away.**
+
+That is the same class of error as the three already recorded here — comparing
+the wrong commit, reading a budget stop as a clean review, keyword-matching a
+paraphrase — except this time the instrument was the harness built to prevent
+them. It was caught only because unmatched findings are kept as `novel` instead
+of discarded: the "novel" list contained the fixture's own defect, twice.
+
+Fixed by making a defect a **span** and matching on **overlap** rather than on
+distance between anchors. Recovering the ranges the reference text already named
+corrected **six defects across three fixtures**.
+
+**No re-run was needed.** `evals/rescore.py` re-scores saved runs against
+corrected fixtures: the findings a run produced are facts about that run, and
+what they are compared against is a separate thing that can be wrong on its own.
+Re-running would have cost another $3.48 to measure the reviewer again in order
+to fix a defect in the harness.
+
+Corrected: **cross-file 0/25 → 2/25**, and the AC8 fixture from *never* to
+*defect #1 found in 2 of 3 runs*.
+
+### 🔸 One fixture's numbers are much weaker than the others', and the harness says so
+
+The planted fixture is a **41-line file with five defects**. With a ±3 line
+tolerance, **71% of its lines sit within reach of some defect** — against 0.7%,
+1.5% and 2.1% for the three real ones. Findings placed at arbitrary lines with
+their text replaced by nonsense score **4 of 5** there.
+
+So `5/5` on that fixture and `1/4` on a real one are not comparable numbers, and
+a report printing both in one column invites the reader to treat them alike.
+`run_eval.py` now measures this before every run and flags such a fixture
+`SOFT`. Two of its defect pairs are also closer than the tolerance can separate,
+which is reported for the same reason.
+
+### FR5 earned its place on the first real sweep
+
+Run 12 hit a **429 `RESOURCE_EXHAUSTED`** on the judge. It is recorded as
+**incomplete**, excluded from recall, and still charged its $0.1596 — rather
+than counted as a fixture-wide zero. Under the pre-M5 practice it would have
+been a 0/7 and would have looked exactly like a recall failure.
+
+### What this does not establish
+
+- **Three of four fixtures come from one repository.** Thirty-plus were scanned;
+  no other carried independently-produced reference reviews.
+- **15 of 20 defects were never executed.** Their reachability rests on the
+  reference reviewer's recorded trigger path, which is better than our reading
+  and is not the same claim as running them.
+- **The planted fixture has no reference review**, so the scorer is unvalidated
+  against it. Its numbers rest on the scorer being right — the assumption the
+  validation gate exists to stop making.
+- **One configuration.** Whether the judge helps at all, and whether
+  `thinking_level` was rejected on noise, are separate arms.
+
+### The scorer was validated before any of the above was believed
+
+Two checks, per fixture with a reference review: can the scorer find the known
+defects in that review, and does it still find them when **every claim is
+replaced by text sharing no vocabulary with any review comment**. Result:
+**15/15 and 15/15**.
+
+The old keyword scorer was reconstructed and run against the same data as a
+control: **4/4 on the reference text, 0/4 with the words replaced.** The
+published false zero, reproduced on demand.
+
+## 🔴 The judge is not the bottleneck. The hypothesis is refuted
+
+`contract-passes-only` — the same four passes, asked to emit findings directly,
+with **no judging step** — run 3 times against each of 4 fixtures. 12 runs, 9
+complete, **$2.3729**.
+
+The standing hypothesis, recorded above, was that the passes surface the defects
+and *the judge discards them*: "the judge sees four described asymmetries and
+calls one a defect", "the bottleneck has moved from perceiving to describing to
+judging". Removing the judge should therefore have recovered them.
+
+**It did not.**
+
+| defect class | with judge | **without judge** |
+|---|---|---|
+| security | 4 / 6 | **6 / 6** |
+| local | 5 / 11 | **2 / 11** |
+| **cross-file** | **2 / 25** | **0 / 18** |
+| convention | 0 / 11 | **0 / 10** |
+
+Cross-file went **down**, not up. Every cross-file defect the judged arm found,
+the unjudged arm missed. Whatever is losing those findings, it is not the judge
+throwing them away.
+
+**Cost fell about 40%** — $0.06 against $0.10 on the small fixture, $0.15–$0.35
+against $0.28–$0.42 on the real ones — because there is one fewer agent session.
+That is the one clear win, and it buys nothing on the axis that matters.
+
+### The caveat that keeps this from being cleaner than it is
+
+**Neither arm isolates surfacing from judging, and the second one cannot.** To
+get structured findings out of a pass, the pass has to be told to emit *defects*
+— so the judging moved into the pass rather than being removed. This was flagged
+in the code before the arm ran, and it is why the comparison varies two things:
+no judge, **and** passes that report rather than describe.
+
+Measuring pure *surfacing* would mean scoring the passes' prose, which is what
+the keyword scorer did and got wrong. There is no version of this experiment
+that measures surfacing with a location-matched scorer, and saying so is more
+useful than a number that pretends otherwise.
+
+### 🔴 Rate limiting, and what the harness did about it
+
+**3 of 12 runs came back incomplete on 429 `RESOURCE_EXHAUSTED`**, against 1 of
+12 in the first sweep — the two sweeps ran back to back against the same
+project. So the unjudged arm rests on 9 complete runs, not 12, and its
+denominators are thinner: cross-file 18 opportunities against 25.
+
+Every one of those runs was **excluded from recall and still charged**, with the
+stop reason recorded verbatim. Under the practice this milestone replaced they
+would have been three more zeros, and the unjudged arm would have looked worse
+than it is for a reason that has nothing to do with review quality.
+
+That is FR5 doing the job it was written for, on real data, twice.
+
+### One more actionable defect the sweeps surfaced
+
+`search_directory` rejects a **relative** `SearchPath`:
+
+```
+invalid tool call error (invalid_args) src/lib must be an absolute path
+```
+
+Three occurrences across the two sweeps. The system instructions say `SearchPath`
+is required — they do not say it must be absolute. Same class of avoidable turn
+cost as the MCP parameter casing, and the same fix: put it in the instructions.
+
+### What replaces the refuted hypothesis
+
+Not "the judge is fine". What can be said is narrower, and it is the first thing
+here said on more than one sample:
+
+- **Removing the judge does not recover cross-file findings**, so the judge is
+  not the sole thing standing between the reviewer and them.
+- **The judged arm is better at local defects and worse at security ones.**
+  5/11 against 2/11, and 4/6 against 6/6. Small numbers, opposite directions,
+  and enough to say the judge is not uniformly helping or uniformly hurting.
+- **The judge costs about 40% of the review.** That is now a priced trade rather
+  than an assumption.
+
+The next hypothesis worth testing is not another prompt. Both arms read the same
+diff-first context and both miss the same defects, which points at what the
+reviewer is *given* rather than at what it is asked. That is a bigger change than
+a milestone of prompt variants, and it should be proposed against this harness
+rather than against another single run.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
