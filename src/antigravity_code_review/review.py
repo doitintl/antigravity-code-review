@@ -15,13 +15,14 @@ import tempfile
 from google.antigravity import Agent, types
 
 from antigravity_code_review.collector import format_seed
-from antigravity_code_review.config import GITHUB_MCP_TOOLS, build_config
+from antigravity_code_review.config import GITHUB_MCP_IMAGE, GITHUB_MCP_TOOLS, build_config
 from antigravity_code_review.github import (
     get_pull_request,
     list_changed_files,
     publish_pending_review,
 )
 from antigravity_code_review.guards import compare_allowlist, is_fork
+from antigravity_code_review.mcp_preflight import McpUnavailable, list_server_tools
 from antigravity_code_review.usage import format_usage, read_usage
 
 
@@ -43,18 +44,23 @@ async def review(repo: str, number: int, project: str) -> int:
     owner, _, repo_name = repo.partition("/")
     config = build_config(project, workspace, app_data_dir, owner, repo_name, number)
 
-    async with Agent(config) as agent:
-        # Validate the MCP allowlist before the first model call. M0 recorded
-        # that the SDK exposes names the server does not have, and that finding
-        # out through a failed call costs a model call. This costs nothing.
-        advertised = await _advertised_tools(agent)
-        if advertised is not None:
-            drift = compare_allowlist(GITHUB_MCP_TOOLS, advertised)
-            print(f"MCP allowlist: {drift.message}")
-            if not drift.ok:
-                print("FAIL: MCP allowlist does not match the server.", file=sys.stderr)
-                return 2
+    # FR7 preflight. Done before the agent is constructed, so a wrong tool name
+    # costs a subprocess rather than a model call and a full-context retry. The
+    # SDK exposes no way to ask, so this speaks MCP to the container directly.
+    try:
+        advertised = list_server_tools(
+            GITHUB_MCP_IMAGE, os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", "")
+        )
+        drift = compare_allowlist(GITHUB_MCP_TOOLS, advertised)
+        print(f"MCP preflight: server offers {len(advertised)} tools; {drift.message}")
+        if not drift.ok:
+            print("FAIL: configured MCP tools are not offered by the server.", file=sys.stderr)
+            return 2
+    except McpUnavailable as exc:
+        # A missing runtime is not a mismatched allowlist. Say which.
+        print(f"MCP preflight skipped: {exc}")
 
+    async with Agent(config) as agent:
         response = await agent.chat(seed)
         text = (await response.text()).strip()
         stop = response.stop_reason
@@ -75,24 +81,6 @@ async def review(repo: str, number: int, project: str) -> int:
         print("WARNING: the agent left no pending review, so nothing was posted.")
 
     return 0
-
-
-async def _advertised_tools(agent: Agent) -> list[str] | None:
-    """Best-effort read of what the MCP server actually offers.
-
-    Returns None when the SDK gives us no way to ask, so a missing introspection
-    surface degrades to "unvalidated" rather than to a false failure.
-    """
-    for attr in ("mcp_tools", "list_mcp_tools", "tools"):
-        source = getattr(agent, attr, None)
-        if source is None:
-            continue
-        value = source() if callable(source) else source
-        if asyncio.iscoroutine(value):
-            value = await value
-        if value:
-            return [getattr(t, "name", str(t)) for t in value]
-    return None
 
 
 def main() -> int:
