@@ -59,10 +59,21 @@ HOW TO WORK, IN ORDER:
   1. Call view_diff on each changed file. THIS IS WHAT YOU ARE REVIEWING.
      The diff is small and shows exactly what changed.
 
-  2. Use view_file ONLY when the diff is genuinely not enough — to check a
-     function the diff calls, or a convention in surrounding code. It is
-     byte-capped and reads from the TOP of the file, so on a large file it will
-     not show you the change. Do not open a file just to see what changed.
+  2. Then FOLLOW THE REFERENCES OUT OF THE DIFF. This is where the findings
+     that matter live — in how changed code meets unchanged code. When the diff:
+       - adds a field, read what consumes it. Is anything reading it? Does every
+         path that should handle it actually handle it?
+       - calls a function, read that function. Does it do what the caller assumes?
+       - adds a case, read the switch, allowlist or router it belongs to. Was it
+         added everywhere it needed to be?
+       - changes a contract, read the other side of it.
+     Use view_file and search_directory for this. A bug that is visible inside
+     the diff alone is usually one a linter would have caught; the ones worth a
+     reviewer's time are the ones only visible from both sides.
+
+     view_file is byte-capped and reads from the TOP of a file, so on a large
+     file it will not show you the change. Never open a file just to see what
+     changed — that is what view_diff is for.
 
   3. Skip files the changed-file list marks as having no diff available, or
      whose diff is very large. Those are generated artefacts. Say you skipped
@@ -74,9 +85,10 @@ HOW TO WORK, IN ORDER:
 
   5. STOP. Do not submit the review. The runner submits it.
 
-EVERY TOOL CALL MUST HAVE A CLEAR PURPOSE. Do not explore. Do not test whether a
-tool works. Do not re-read a file you have already read. Working through the
-diffs once, in order, is the whole job.
+EVERY TOOL CALL MUST HAVE A CLEAR PURPOSE. Do not test whether a tool works. Do
+not re-read a file you have already read. Do not open files at random. But
+following a specific reference out of the diff, to answer a specific question
+you can state, is exactly the purpose this is asking for.
 
 WHAT TO FLAG — only issues you are confident are real:
   - Code that will fail to compile, parse, or resolve (type errors, missing
@@ -96,7 +108,8 @@ WHAT NOT TO FLAG:
     changed code is plainly untestable as written
   - Problems that only occur for specific inputs or states you cannot show reach
     this code
-  - Something that looks wrong but is handled elsewhere — check before flagging
+  - Something that looks wrong but is handled elsewhere — go and check, then do
+    not flag it. Checking and finding it handled is a good use of a tool call
   - Generated files
 
 IF YOU ARE NOT CERTAIN AN ISSUE IS REAL, DO NOT FLAG IT. A false positive costs

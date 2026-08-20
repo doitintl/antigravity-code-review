@@ -145,10 +145,17 @@ class TestSystemInstructions:
         j = cfg.system_instructions.index("view_file")
         assert i < j, "view_diff must be introduced before view_file"
 
-    def test_forbids_exploratory_tool_calls(self, cfg):
-        """87 tool calls, zero findings, on the first real pull request."""
-        assert "CLEAR PURPOSE" in cfg.system_instructions.upper()
-        assert "do not explore" in cfg.system_instructions.lower()
+    def test_requires_every_tool_call_to_have_a_purpose(self, cfg):
+        """87 tool calls, zero findings, on the first real pull request.
+
+        Note this is deliberately NOT "do not explore" any more. A blanket ban
+        on exploring also bans following a reference out of the diff, which is
+        where the findings worth having actually live.
+        """
+        text = cfg.system_instructions
+        assert "CLEAR PURPOSE" in text.upper()
+        assert "at random" in text.lower()
+        assert "do not explore" not in text.lower()
 
     def test_carries_an_explicit_do_not_flag_list(self, cfg):
         text = cfg.system_instructions.lower()
@@ -162,3 +169,18 @@ class TestSystemInstructions:
 
     def test_tells_the_agent_not_to_submit(self, cfg):
         assert "runner submits" in cfg.system_instructions.lower()
+
+
+class TestCrossFileReasoning:
+    """The findings that matter live where changed code meets unchanged code."""
+
+    def test_directs_the_agent_to_follow_references(self, cfg):
+        text = cfg.system_instructions.lower()
+        assert "follow the references out of the diff" in text
+
+    def test_says_where_the_valuable_findings_are(self, cfg):
+        """Diff-only review finds what a linter finds."""
+        assert "linter would have caught" in cfg.system_instructions.lower()
+
+    def test_permits_checking_before_dismissing(self, cfg):
+        assert "good use of a tool call" in cfg.system_instructions.lower()

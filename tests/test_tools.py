@@ -13,8 +13,20 @@ def workspace(tmp_path, monkeypatch):
     (tmp_path / "a.txt").write_text("hello")
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "b.txt").write_text("nested")
-    monkeypatch.setattr(tools, "_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("AGY_WORKSPACE", str(tmp_path))
     return tmp_path
+
+
+class TestWorkspaceIsResolvedLate:
+    def test_workspace_is_read_at_call_time_not_import_time(self, tmp_path, monkeypatch):
+        """A module-level constant captured cwd before any caller could set it.
+
+        On draft#538 that denied every relative path into the real checkout —
+        including the files the agent had just been told to go and read.
+        """
+        (tmp_path / "late.txt").write_text("resolved late")
+        monkeypatch.setenv("AGY_WORKSPACE", str(tmp_path))
+        assert tools.view_file("late.txt") == "resolved late"
 
 
 class TestPathResolution:

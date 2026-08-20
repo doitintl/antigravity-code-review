@@ -20,10 +20,21 @@ import os
 
 from antigravity_code_review.truncation import DEFAULT_CAP_BYTES, truncate
 
-# Bound the workspace so a path traversal cannot read outside the checkout.
-# policy.workspace_only() also covers this; belt and braces, because this tool
-# replaces the built-in that policy was written against.
-_WORKSPACE = os.environ.get("AGY_WORKSPACE") or os.getcwd()
+
+def _workspace() -> str:
+    """Resolve the workspace at call time, not at import time.
+
+    A module-level constant captured `os.getcwd()` when the module was first
+    imported, which is before any caller has had a chance to set AGY_WORKSPACE.
+    The result was a guard that denied every relative path into the real
+    workspace — including, on draft#538, the exact files the agent had just been
+    instructed to go and read.
+
+    Bound so a path traversal cannot escape the checkout. policy.workspace_only()
+    also covers this; belt and braces, because this tool replaces the built-in
+    that policy was written against.
+    """
+    return os.environ.get("AGY_WORKSPACE") or os.getcwd()
 
 
 def view_file(AbsolutePath: str, StartLine: int | None = None, EndLine: int | None = None) -> str:
@@ -47,7 +58,7 @@ def view_file(AbsolutePath: str, StartLine: int | None = None, EndLine: int | No
     #
     # Refusing a path outside the workspace is correct. Refusing a *relative*
     # path that names a file inside it is just a bug wearing a security costume.
-    workspace = os.path.realpath(_WORKSPACE)
+    workspace = os.path.realpath(_workspace())
     candidate = AbsolutePath if os.path.isabs(AbsolutePath) else os.path.join(workspace, AbsolutePath)
     resolved = os.path.realpath(candidate)
     if not resolved.startswith(workspace + os.sep) and resolved != workspace:

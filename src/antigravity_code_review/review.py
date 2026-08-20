@@ -32,6 +32,7 @@ from antigravity_code_review.guards import compare_allowlist, is_fork
 from antigravity_code_review.mcp_preflight import McpUnavailable, alist_server_tools
 from antigravity_code_review.rates import FLASH
 from antigravity_code_review.report import cost_artifact, cost_line, review_body
+from antigravity_code_review.tools import make_view_diff
 from antigravity_code_review.usage import format_usage, read_usage
 
 
@@ -51,6 +52,11 @@ async def review(repo: str, number: int, project: str) -> int:
     workspace = os.getcwd()
     app_data_dir = tempfile.mkdtemp(prefix="agy-review-", dir=tempfile.gettempdir())
     owner, _, repo_name = repo.partition("/")
+    # The patches are already in hand from list_changed_files; serve them
+    # through a tool rather than discarding them.
+    patches = {f["filename"]: f["patch"] for f in files if f.get("patch")}
+    print(f"diffs available for {len(patches)}/{len(files)} files")
+
     collector = UsageCollector()
     config = build_config(
         project,
@@ -60,6 +66,7 @@ async def review(repo: str, number: int, project: str) -> int:
         repo_name,
         number,
         extra_hooks=collector.hooks(),
+        extra_tools=[make_view_diff(patches)],
     )
 
     # FR7 preflight. Done before the agent is constructed, so a wrong tool name
