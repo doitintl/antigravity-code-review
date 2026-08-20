@@ -92,6 +92,16 @@ runner is also the expensive half, and it should not be written against a guess.
 - [ ] **Task: Re-test what was rejected on one sample** *(integration)*
   - [ ] Batching, `thinking_level`, judge tooling were each rejected on n=1
   - [ ] Some may have been rejected on noise. Say which
+  - **Arms built and ready:** `contract-passes+judge` (the baseline, AC8),
+    `contract-passes-only` (does the judge help at all), and
+    `contract-passes+judge+high-thinking` (`thinking_level=HIGH`, rejected on n=1)
+  - **Batching is deliberately not re-tested.** It failed its pre-registered bar on *both* axes —
+    0/4 recall at $0.70 against 0/4 at $0.39 — so noise is not what rejected it. Re-running it
+    would cost a full sweep to re-establish the half of the result that was never in doubt.
+    Recorded as a decision, not an omission
+  - **Judge tooling is not re-tested either.** Giving the judge tools was one prompt change
+    measured once; the arm that matters more is whether the judge helps *at all*, which
+    `contract-passes-only` answers. Said plainly rather than quietly dropped
 - [ ] **Task: Write up the evidence** *(chore)*
   - [ ] Record results with the SDK version; check off M5 in `docs/roadmap.md`
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
