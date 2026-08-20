@@ -59,8 +59,8 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 ## Phase 4 — Record and close
 
-- [ ] **Task: Write up the evidence** *(chore)*
-  - [ ] Append Phase 2 and Phase 3 results to `docs/probe-results.md`, each naming the SDK version
-  - [ ] Check off all M0 items in `docs/roadmap.md`; mark Q1, Q4 and Q5 closed in the register
-  - [ ] Fold any new finding into `docs/design.md` or `docs/cost-tracking.md` where it changes a decision
+- [x] **Task: Write up the evidence** *(chore)* `86fb5c8`
+  - [x] Append Phase 2 and Phase 3 results to `docs/probe-results.md`, each naming the SDK version
+  - [x] Check off all M0 items in `docs/roadmap.md`; mark Q1, Q4 and Q5 closed in the register — 0 M0 items remain open
+  - [x] Fold any new finding into `docs/design.md` or `docs/cost-tracking.md` where it changes a decision — both updated; `conductor/product.md` and `conductor/tech-stack.md` raised for the doc-sync step rather than edited unilaterally
 - [ ] **Task: Phase Verification & Checkpoint** (refer to [`../../workflow.md`](../../workflow.md))
