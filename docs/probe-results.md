@@ -245,6 +245,56 @@ A tool-using turn is two model calls, so that is ~10.9k input tokens *per call* 
 
 The example's streamed output first appeared empty, because its `@post_tool_call` audit hook prints a leading newline mid-stream and pushes the agent's text below the audit line. Streaming on Vertex is fine — a control run yielded the full text in one chunk, `stop_reason=UNSPECIFIED`. All four of the example's own stated success criteria are met.
 
+## ✅ Q4 / FR7 — subagent tokens roll up, and the budget ceiling leaks
+
+The register recorded "one delegation reported 45k root prompt tokens — evidence of roll-up, no control run". A single large number was never evidence: enabling `START_SUBAGENT` also raises the tool-surface floor, and the floor dominates. `probe/probe_subagent_rollup.py` runs the controlled pair, and uses an instrument the earlier attempt did not: **`Conversation.trajectory_usages`** reports usage per trajectory, and a subagent gets its own. That turns an inference into a reading.
+
+### 🔴 First, the blocker: subagents do not work on Vertex
+
+Every delegation attempt fails:
+
+```
+error executing cascade step: CORTEX_STEP_TYPE_INVOKE_SUBAGENT:
+failed to fetch tiered models for subagent model resolution: PlatformClient is nil
+```
+
+Reproduced four ways on `0.1.12`: with the `model=` shorthand and `[FINISH, START_SUBAGENT]`; with `read_only()` plus `START_SUBAGENT`; with an explicit `models=[ModelTarget(...)]`; and with `models=[ModelTarget(endpoint=VertexEndpoint(project=..., location="global"))]`. It is not a tool-configuration problem — subagent *model resolution* wants a platform client that is nil on the Vertex path.
+
+**A failed delegation is not free.** It costs roughly ten times a direct answer:
+
+| run | delegation | trajectories | total tokens |
+|---|---|---|---|
+| A — control | off | 1 | **3,881** |
+| B — delegation on | attempted, failed | 2 | **36,269** |
+
+### Roll-up: yes, and it can be read directly rather than inferred
+
+In run B the two trajectories were `25,580` (root) and `10,689` (subagent), summing to `36,269` — **exactly `total_usage`**. The subagent's trajectory is present in `trajectory_usages` and is accounted for in the root total.
+
+### 🔴 Budget: no — `BudgetConfig` binds on the root trajectory, not on `total_usage`
+
+This is the finding that changes M3. Run C set `max_total_tokens=27,580`, chosen to sit *above* B's root trajectory and *below* root + subagent, so that only subagent spend could breach it:
+
+| | tokens | vs ceiling 27,580 |
+|---|---|---|
+| root trajectory | 25,455 | under |
+| **session total** | **38,395** | **over by 10,815** |
+| `stop_reason` | `UNSPECIFIED` | **did not stop** |
+
+An earlier run with `max_total_tokens=6,000` — below the root trajectory — *did* stop with `MAX_TOTAL_TOKENS_EXCEEDED`. The two runs bracket the behaviour: **the dial works, and it is evaluated against the root trajectory only.** Subagent tokens are billed, are reported in `total_usage`, and are not capped.
+
+**`max_total_tokens` does not bound a session that delegates.** A ceiling expressed in dollars would be understated by the entire subagent workload, silently.
+
+### What this means for M3 and M1
+
+- **`enable_subagents=False` is now a hard requirement, not a preference.** M1 already planned it for prompt-floor reasons. It is now also the only thing making the M3 ceiling truthful, and the only thing preventing a guaranteed-to-fail 36k-token detour on Vertex.
+- **M3 must state the bound honestly.** With subagents off, `max_total_tokens` is a real ceiling. With them on, it is not a ceiling at all. That is a stronger caveat than the "near-bound" wording currently planned for cached reads.
+- Q2 said the dials are "cumulative across the session". Refine that: **cumulative across the *root trajectory*.**
+
+### The caveat this rests on
+
+The subagent failed during model resolution, so these numbers are the spawn-and-fail path. Whether a *successful* subagent's tokens would also escape the ceiling cannot be determined on Vertex while the defect stands. The safe reading is the conservative one: do not rely on `max_total_tokens` to bound a delegating session.
+
 ## Still open
 
 - **Q10.** Vertex-side rates, and the `FLEX` tier the enum revealed.
