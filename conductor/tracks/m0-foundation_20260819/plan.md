@@ -41,10 +41,10 @@ Follows the methodology in [`../../workflow.md`](../../workflow.md). Each task i
 
 *Runs against local ADC; independent of Phases 1–2.*
 
-- [ ] **Task: Harness tool inventory (FR5)** *(integration)*
-  - [ ] Extract the registered tool list from the harness, not from the model
-  - [ ] Determine what `manage_task` and `schedule` do, and whether either writes
-  - [ ] If either writes, raise it as a security finding against the posture in `docs/design.md`
+- [x] **Task: Harness tool inventory (FR5)** *(integration)* `20814bf`
+  - [x] Extract the registered tool list from the harness, not from the model
+  - [x] Determine what `manage_task` and `schedule` do, and whether either writes
+  - [x] If either writes, raise it as a security finding against the posture in `docs/design.md` — neither writes; neither is registered. No finding raised
 - [ ] **Task: SDK example parity (FR6)** *(integration)*
   - [ ] Fetch `budget_limits.py` and `observability.py` from `google-antigravity/antigravity-sdk-python`, **from the tag matching the pinned `0.1.12`**, not from `main` — they do not ship in the wheel
   - [ ] Run both against Vertex (`location="global"`); note any divergence from the API-key path they were written for
