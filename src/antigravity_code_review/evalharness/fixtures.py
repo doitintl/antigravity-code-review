@@ -30,6 +30,7 @@ from typing import Any
 # is the shortest thing that can honestly be called a commit. Shorter is a
 # prefix, and a prefix can resolve to two objects in a large repository.
 _SHA = re.compile(r"^[0-9a-f]{7,40}$")
+_RANGE = re.compile(r"^\s*(\d+)\s*[-\u2013\u2014:]\s*(\d+)\s*$")
 _REPO = re.compile(r"^[^/\s]+/[^/\s]+$")
 
 
@@ -63,6 +64,13 @@ class DefectClass(str, Enum):
 class Defect:
     """One known defect in a fixture's change.
 
+    `line` and `end_line` are inclusive and equal for a single line. **A defect
+    in a block is in the whole block**, and recording only an anchor line has
+    already produced a false miss on real data: a reference reviewer hung its
+    comment at the END of a seventeen-line block, our reviewer pointed at the
+    START, and a three-line tolerance called a correct finding a miss. The
+    reference reviewer's own text named the span; the fixture had thrown it away.
+
     `reachable` is prose evidence that the defect can actually manifest — a
     sentence a human wrote after checking, not a boolean a human ticked. A
     boolean records that somebody was asked; a sentence records what they found.
@@ -74,6 +82,14 @@ class Defect:
     defect_class: DefectClass
     description: str
     reachable: str
+    end_line: int | None = None
+
+    @property
+    def span(self) -> tuple[int, int] | None:
+        """The inclusive line range this defect occupies, or None if unlocated."""
+        if self.line is None:
+            return None
+        return self.line, self.end_line if self.end_line is not None else self.line
 
 
 @dataclass(frozen=True)
@@ -121,6 +137,37 @@ def _sha(obj: dict[str, Any], key: str, where: str) -> str:
     return value
 
 
+def _line(value: Any, where: str) -> int | None:
+    """One line number, or None. Never guessed at."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    if not text.isdigit():
+        raise FixtureError(f"{where}: line={value!r} is not a line number")
+    return int(text)
+
+
+def _span(obj: dict[str, Any], where: str) -> tuple[int | None, int | None]:
+    """Read a defect's line range, accepting `989-1005` as well as two fields."""
+    raw = obj.get("line")
+    end = _line(obj.get("end_line"), where)
+
+    if isinstance(raw, str):
+        match = _RANGE.match(raw)
+        if match:
+            first, last = int(match.group(1)), int(match.group(2))
+            return min(first, last), max(first, last)
+
+    start = _line(raw, where)
+    if start is None:
+        return (end, end) if end is not None else (None, None)
+    if end is None:
+        return start, start
+    return min(start, end), max(start, end)
+
+
 def _defect(obj: dict[str, Any], where: str) -> Defect:
     file = _require(obj, "file", where)
     description = _require(obj, "description", where)
@@ -133,11 +180,7 @@ def _defect(obj: dict[str, Any], where: str) -> Defect:
         known = ", ".join(c.value for c in DefectClass)
         raise FixtureError(f"{where}: unknown defect class {raw_class!r} (known: {known})") from exc
 
-    line = obj.get("line")
-    if line is not None and not isinstance(line, bool) and not isinstance(line, int):
-        if not str(line).strip().isdigit():
-            raise FixtureError(f"{where}: line={line!r} is not a line number")
-        line = int(str(line).strip())
+    start, end = _span(obj, where)
 
     reachable = obj.get("reachable")
     if not reachable or not str(reachable).strip():
@@ -150,7 +193,8 @@ def _defect(obj: dict[str, Any], where: str) -> Defect:
     return Defect(
         id=identifier,
         file=str(file),
-        line=int(line) if line is not None else None,
+        line=start,
+        end_line=end,
         defect_class=defect_class,
         description=str(description),
         reachable=str(reachable).strip(),

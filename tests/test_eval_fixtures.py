@@ -144,11 +144,34 @@ class TestDefectRecords:
         f = load_fixture(_fixture(defects=[{**GOOD_DEFECT, "line": "214"}]))
         assert f.defects[0].line == 214
 
+    def test_a_defect_may_span_a_range(self):
+        """A defect in a block is in the whole block.
+
+        Recorded because scoring a single anchor line produced a false miss on
+        real data: a reference reviewer hung its comment at the END of a
+        seventeen-line block, our reviewer pointed at the START, and a
+        three-line tolerance called a correct finding a miss."""
+        f = load_fixture(_fixture(defects=[{**GOOD_DEFECT, "line": 989, "end_line": 1005}]))
+        assert f.defects[0].line == 989 and f.defects[0].end_line == 1005
+
+    def test_a_range_written_with_a_dash_is_read(self):
+        f = load_fixture(_fixture(defects=[{**GOOD_DEFECT, "line": "989-1005"}]))
+        assert f.defects[0].line == 989 and f.defects[0].end_line == 1005
+
+    def test_a_single_line_spans_only_itself(self):
+        f = load_fixture(_fixture(defects=[{**GOOD_DEFECT, "line": 214}]))
+        assert f.defects[0].line == 214 and f.defects[0].end_line == 214
+
+    def test_a_reversed_range_is_normalised(self):
+        f = load_fixture(_fixture(defects=[{**GOOD_DEFECT, "line": 1005, "end_line": 989}]))
+        assert f.defects[0].line == 989 and f.defects[0].end_line == 1005
+
     def test_a_defect_line_may_be_absent(self):
         """Some defects are a property of a file, not of one line."""
         d = dict(GOOD_DEFECT)
         del d["line"]
-        assert load_fixture(_fixture(defects=[d])).defects[0].line is None
+        loaded = load_fixture(_fixture(defects=[d])).defects[0]
+        assert loaded.line is None and loaded.end_line is None
 
     def test_a_non_numeric_line_is_rejected_rather_than_coerced(self):
         with pytest.raises(FixtureError, match="line"):

@@ -85,6 +85,45 @@ class TestLocationIsWhatMatches:
         assert s.found("d1")
 
 
+class TestSpansOverlapRatherThanPointsMatching:
+    """The false miss this project's own harness produced, written down.
+
+    A reference reviewer anchored its comment at line 1005, at the END of a
+    block it described in its own text as 989-1005. Our reviewer pointed at
+    989, the start of the same block. A three-line tolerance around a single
+    recorded point called that a miss, and the run was reported 0/4 when it
+    was 1/4. Fourth time in this project an instrument produced the headline
+    number, and the first time the instrument was the harness."""
+
+    def test_a_finding_at_the_start_of_a_block_matches_a_defect_recorded_across_it(self):
+        f = _fixture(_defect("d1", line=989, end_line=1005))
+        assert score_run(f, [_finding(line=989)]).found("d1")
+
+    def test_a_finding_at_the_end_matches_too(self):
+        f = _fixture(_defect("d1", line=989, end_line=1005))
+        assert score_run(f, [_finding(line=1005)]).found("d1")
+
+    def test_a_finding_in_the_middle_matches(self):
+        f = _fixture(_defect("d1", line=989, end_line=1005))
+        assert score_run(f, [_finding(line=997)]).found("d1")
+
+    def test_a_finding_just_outside_the_span_still_matches_within_tolerance(self):
+        f = _fixture(_defect("d1", line=989, end_line=1005))
+        assert score_run(f, [_finding(line=1007)]).found("d1")
+
+    def test_a_finding_well_outside_the_span_does_not(self):
+        f = _fixture(_defect("d1", line=989, end_line=1005))
+        assert not score_run(f, [_finding(line=1200)]).found("d1")
+
+    def test_two_spans_overlapping_is_a_match_even_with_no_shared_endpoint(self):
+        f = _fixture(_defect("d1", line=100, end_line=200))
+        assert score_run(f, [_finding(line=150, end=160)]).found("d1")
+
+    def test_a_finding_span_enclosing_the_defect_span_matches(self):
+        f = _fixture(_defect("d1", line=990, end_line=1000))
+        assert score_run(f, [_finding(line=900, end=1100)]).found("d1")
+
+
 class TestTextNeverVetoesALocation:
     """The regression that produced a published false zero."""
 

@@ -83,6 +83,26 @@ def _similarity(defect: Defect, finding: Finding) -> float:
     return len(left & right) / len(left | right)
 
 
+def _overlaps(defect: Defect, finding: Finding, tolerance: int) -> bool:
+    """Whether the finding's span reaches the defect's, within `tolerance`.
+
+    Spans, not points. A defect in a block is in the whole block, and a
+    reviewer may reasonably anchor its comment anywhere in it — the reference
+    reviewer on one fixture anchored at the end of a seventeen-line block while
+    ours anchored at the start. Comparing anchor points called that a miss.
+
+    An absent line on either side means the location carries no information to
+    contradict, so it matches.
+    """
+    span = defect.span
+    if span is None or finding.line is None or finding.end_line is None:
+        return True
+    return (
+        finding.line - tolerance <= span[1]
+        and finding.end_line + tolerance >= span[0]
+    )
+
+
 def _candidates(
     defect: Defect, findings: Sequence[Finding], tolerance: int
 ) -> list[tuple[float, int, Finding]]:
@@ -95,7 +115,7 @@ def _candidates(
         # its input was constructed is the fragility this module exists to avoid.
         if normalise_path(finding.file) != target:
             continue
-        if not finding.covers(defect.line, tolerance=tolerance):
+        if not _overlaps(defect, finding, tolerance):
             continue
         out.append((_similarity(defect, finding), index, finding))
     out.sort(key=lambda t: (-t[0], t[1]))
