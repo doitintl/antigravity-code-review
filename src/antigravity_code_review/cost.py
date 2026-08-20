@@ -130,7 +130,8 @@ def price_session(turns: list[TurnUsage], model: str, on: date, **kw) -> PricedS
             total += priced.cost_usd
         if priced.rate_applied:
             labels.add(priced.rate_applied)
-        tiers[str(getattr(t.service_tier, "value", t.service_tier))] += 1
+        raw = getattr(t.service_tier, "value", t.service_tier)
+        tiers[str(raw).upper() if raw is not None else "UNKNOWN"] += 1
 
     return PricedSession(
         turns=len(turns),

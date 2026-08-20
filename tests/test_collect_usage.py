@@ -65,7 +65,7 @@ class TestDeltas:
 
 class TestHooks:
     def test_returns_registerable_hooks(self):
-        assert len(UsageCollector().hooks()) == 2
+        assert len(UsageCollector().hooks()) == 3
 
     def test_counters_start_at_zero(self):
         c = UsageCollector()

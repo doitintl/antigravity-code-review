@@ -105,3 +105,22 @@ class TestOverrides:
         lookup(FLASH, ServiceTier.STANDARD, BEFORE,
                overrides={FLASH: {ServiceTier.STANDARD: []}})
         assert lookup(FLASH, ServiceTier.STANDARD, BEFORE).input_per_m == 0.75
+
+
+class TestTierCasing:
+    """The SDK emits lowercase; published tables write uppercase. Accept both."""
+
+    def test_sdk_lowercase_value_resolves(self):
+        assert lookup(FLASH, "standard", BEFORE) is not None
+
+    def test_uppercase_string_resolves(self):
+        assert lookup(FLASH, "STANDARD", BEFORE) is not None
+
+    def test_sdk_enum_instance_resolves(self):
+        from google.antigravity.models import ServiceTier as SdkTier
+        assert lookup(FLASH, SdkTier.STANDARD, BEFORE) is not None
+
+    def test_our_values_match_the_sdk_values(self):
+        """If these drift apart, every real run prices as unknown."""
+        from google.antigravity.models import ServiceTier as SdkTier
+        assert {t.value for t in ServiceTier} == {t.value for t in SdkTier}

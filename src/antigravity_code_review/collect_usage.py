@@ -72,4 +72,16 @@ class UsageCollector:
         async def count_tool_call(_data: Any) -> None:
             self.tool_calls += 1
 
-        return [count_compaction, count_tool_call]
+        @hooks.post_turn
+        async def snapshot_turn(data: Any) -> None:
+            """Snapshot after every turn, not once at the end.
+
+            A first version recorded only the final cumulative reading, so a
+            multi-turn review reported "1 model call" and priced the whole
+            session at whatever tier the last request happened to use.
+            """
+            usage = getattr(data, "usage", None) or getattr(data, "total_usage", None)
+            if usage is not None:
+                self.record_cumulative(usage)
+
+        return [count_compaction, count_tool_call, snapshot_turn]

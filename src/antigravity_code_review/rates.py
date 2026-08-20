@@ -35,11 +35,17 @@ FLASH = "gemini-3.7-flash"
 
 
 class ServiceTier(str, Enum):
-    """Mirrors the SDK's ServiceTier. Every probe call so far reported STANDARD."""
+    """Mirrors the SDK's ServiceTier, values included.
 
-    STANDARD = "STANDARD"
-    PRIORITY = "PRIORITY"
-    FLEX = "FLEX"
+    The values are **lowercase** because that is what the SDK emits. A first
+    version used uppercase and every real run priced as "unknown tier" — caught
+    only because unknown-means-unknown refuses to guess. Had it fallen back to a
+    neighbouring rate, every review would have been silently mispriced instead.
+    """
+
+    STANDARD = "standard"
+    PRIORITY = "priority"
+    FLEX = "flex"
 
 
 @dataclass(frozen=True)
@@ -119,9 +125,12 @@ def lookup(
     if by_tier is None:
         return None
 
+    # Case-insensitive on purpose. The SDK emits lowercase, published tables
+    # write it uppercase, and a case mismatch should not read as an unknown tier.
     try:
-        key = ServiceTier(tier) if tier is not None else None
-    except ValueError:
+        raw = getattr(tier, "value", tier)
+        key = ServiceTier(str(raw).lower()) if raw is not None else None
+    except (ValueError, AttributeError):
         return None
     if key is None:
         return None
